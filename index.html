@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HadirAlumni — Pengajian Alumni Maskana</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="card.css" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="qr-fix.css" />
+  <link rel="stylesheet" href="logo.css" />
+  <link rel="stylesheet" href="logo-mark.css" />
+  <link rel="stylesheet" href="logo-final.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">✓</span><span>hadir<span>alumni</span></span></div>
+    <p class="event-label">AGENDA ALUMNI</p>
+    <button class="event-switch" id="eventName">Pengajian Alumni <span>⌄</span></button>
+    <nav>
+      <button class="nav-item active" data-tab="dashboard"><i>▦</i> Dasbor</button>
+      <button class="nav-item" data-tab="scan"><i>⌁</i> Scan Kehadiran</button>
+      <button class="nav-item" data-tab="peserta"><i>♙</i> Data Peserta</button>
+      <button class="nav-item" data-tab="rekap"><i>▤</i> Rekap Desa</button>
+    </nav>
+    <div class="sidebar-footer"><span class="pulse"></span> Sistem tersambung</div>
+  </aside>
+
+  <main>
+    <header>
+      <div><p class="eyebrow" id="today">KAMIS, 13 AGUSTUS 2026</p><h1 id="pageTitle">Selamat datang 👋</h1></div>
+      <div class="header-actions"><button class="icon-btn" title="Ekspor data" id="exportBtn">⇩</button><button class="profile"><b>A</b> Admin <span>⌄</span></button></div>
+    </header>
+
+    <section class="tab active" id="dashboard">
+      <div class="hero"><div><p class="hero-tag"><span></span> PENGAJIAN ALUMNI BERLANGSUNG</p><h2>Pengajian Alumni<br><em>MASKANA</em></h2><p id="eventDate">Agenda rutin setiap bulan Hijriyah</p></div><button class="light-button" data-go="scan">Mulai scan <span>→</span></button></div>
+      <div class="stats">
+        <article><div class="stat-icon green">♙</div><p>Total peserta</p><strong id="totalPeserta">0</strong><small>Data terdaftar</small></article>
+        <article><div class="stat-icon blue">✓</div><p>Sudah hadir</p><strong id="totalHadir">0</strong><small id="presentRate">0% dari peserta</small></article>
+        <article><div class="stat-icon orange">⌂</div><p>Desa hadir</p><strong id="totalDesa">0</strong><small id="villageRate">Dari 0 desa terdaftar</small></article>
+        <article><div class="stat-icon violet">◷</div><p>Terakhir scan</p><strong class="last-name" id="lastScan">—</strong><small id="lastTime">Belum ada kehadiran</small></article>
+      </div>
+      <div class="split"><section class="panel"><div class="panel-title"><div><h3>Kehadiran terbaru</h3><p>Peserta yang baru saja dipindai</p></div><button class="text-button" data-go="scan">Lihat semua →</button></div><div id="recentList" class="recent-list empty">Belum ada peserta yang hadir.</div></section>
+      <section class="panel village-panel"><div class="panel-title"><div><h3>Desa sudah hadir</h3><p>Pantau persebaran kehadiran</p></div></div><div id="villageBars" class="village-bars empty">Belum ada data kehadiran.</div></section></div>
+    </section>
+
+    <section class="tab" id="scan">
+      <div class="section-heading"><div><h2>Scan Kehadiran</h2><p>Siapkan cursor pada kolom di bawah, lalu scan QR peserta.</p></div><span class="live-pill"><i></i> SIAP MENERIMA SCAN</span></div>
+      <div class="scanner-layout"><section class="scan-card"><div class="scan-animation"><div class="scan-corner tl"></div><div class="scan-corner tr"></div><div class="scan-corner bl"></div><div class="scan-corner br"></div><div class="scan-line"></div><span>QR</span></div><h3>Arahkan scanner ke QR peserta</h3><p>Alat scanner USB akan mengisi kode secara otomatis.</p><input id="scanInput" autocomplete="off" placeholder="Klik di sini, lalu scan kode QR..." /><p class="scan-hint">Tekan <kbd>Enter</kbd> bila scanner tidak mengirim otomatis.</p></section>
+      <aside class="scan-result" id="scanResult"><div class="result-placeholder"><div>⌁</div><h3>Menunggu pemindaian</h3><p>Data peserta akan muncul di sini setelah QR dipindai.</p></div></aside></div>
+      <section class="panel attendance-panel"><div class="panel-title"><div><h3>Log kehadiran hari ini</h3><p id="attendanceCount">0 peserta tercatat hadir</p></div><input class="filter-input" id="attendanceSearch" placeholder="Cari nama atau desa..." /></div><div class="table-wrap"><table><thead><tr><th>PESERTA</th><th>ALAMAT</th><th>WAKTU HADIR</th><th>STATUS</th></tr></thead><tbody id="attendanceRows"></tbody></table></div></section>
+    </section>
+
+    <section class="tab" id="peserta">
+      <div class="section-heading"><div><h2>Data Peserta</h2><p>Tambah peserta dan buat kartu QR unik untuk setiap orang.</p></div><button class="primary-button" id="addParticipant">＋ Tambah peserta</button></div>
+      <section class="panel"><div class="panel-title"><div><h3>Daftar peserta</h3><p id="participantCount">0 peserta terdaftar</p></div><input class="filter-input" id="participantSearch" placeholder="Cari nama, desa, atau WA..." /></div><div class="table-wrap"><table><thead><tr><th>NAMA PESERTA</th><th>ALAMAT</th><th>NOMOR WHATSAPP</th><th>QR</th><th>AKSI</th></tr></thead><tbody id="participantRows"></tbody></table></div></section>
+    </section>
+
+    <section class="tab" id="rekap">
+      <div class="section-heading"><div><h2>Rekap Kehadiran Desa</h2><p>Data diperbarui langsung setiap QR berhasil dipindai.</p></div><button class="primary-button" id="exportBtn2">⇩ Ekspor CSV</button></div>
+      <div class="recap-summary" id="recapSummary"></div>
+      <section class="panel"><div class="panel-title"><div><h3>Rincian per desa</h3><p>Jumlah peserta terdaftar dan sudah hadir</p></div></div><div class="table-wrap"><table><thead><tr><th>DESA</th><th>KECAMATAN</th><th>KABUPATEN</th><th>TERDAFTAR</th><th>HADIR</th><th>PERSENTASE</th></tr></thead><tbody id="recapRows"></tbody></table></div></section>
+    </section>
+  </main>
+
+  <dialog id="participantModal"><form method="dialog" id="participantForm"><div class="modal-head"><div><p class="eyebrow">PESERTA BARU</p><h2>Tambah data peserta</h2></div><button class="close" value="cancel">×</button></div><div class="form-grid"><label>Nama lengkap<input required name="name" placeholder="Contoh: Siti Aminah" /></label><label>Nomor WhatsApp<input required name="phone" inputmode="tel" placeholder="08xxxxxxxxxx" /></label><label>Desa<input required name="village" id="villageInput" list="villageOptions" placeholder="Ketik nama desa" /><small class="field-help">Desa yang pernah disimpan akan mengisi alamat otomatis.</small></label><label>Kecamatan<input required name="district" id="districtInput" placeholder="Terisi otomatis bila desa sudah dikenal" /></label><label class="wide">Kabupaten<input required name="regency" id="regencyInput" placeholder="Terisi otomatis bila desa sudah dikenal" /></label></div><datalist id="villageOptions"></datalist><div class="modal-actions"><button value="cancel" class="secondary-button">Batal</button><button class="primary-button" value="default">Simpan & buat QR</button></div></form></dialog>
+  <dialog id="qrModal"><div class="qr-modal"><div class="card-actions"><p class="eyebrow">PRATINJAU KARTU PESERTA</p><button class="close close-qr" aria-label="Tutup">×</button></div><div class="participant-card" id="participantCard"><div class="card-glow glow-one"></div><div class="card-glow glow-two"></div><div class="card-branding"><img class="card-logo" src="logo-maskana.png" alt="Logo Maskana" /><div><b>MASKANA</b><small>KARTU KEHADIRAN</small></div></div><div class="card-title"><span>ALUMNI &amp; PESERTA</span><strong>Pengajian Alumni</strong></div><div class="card-qr-panel"><div id="qrCode" aria-label="Kode QR peserta"></div><small>SCAN SAAT HADIR</small></div><div class="card-info"><div><label>NAMA PESERTA</label><strong id="cardName"></strong></div><div><label>ALAMAT</label><span id="cardAddress"></span></div><div><label>WHATSAPP</label><span id="cardPhone"></span></div></div><div class="card-footer"><span>HADIRALUMNI · MASKANA</span><span>QR UNIK</span></div></div><p class="qr-instruction">Kartu sudah siap. Unduh untuk disimpan atau kirim kartu sebagai lampiran ke WhatsApp.</p><div class="card-buttons"><button class="secondary-button" id="downloadCard">⇩ Unduh PNG</button><button class="whatsapp-button" id="sendWhatsApp">◉ Kirim kartu ke WhatsApp</button><button class="primary-button print-card" onclick="window.print()">Cetak</button></div></div></dialog>
+  <div id="toast"></div>
+  <script src="app.js"></script>
+  <script src="send-message.js"></script>
+</body>
+</html>

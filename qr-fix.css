@@ -1,0 +1,2 @@
+/* qrcode.js membuat canvas dan gambar; hanya gambar akhir yang boleh terlihat. */
+.card-qr-panel #qrCode{overflow:hidden!important;isolation:isolate}.card-qr-panel #qrCode canvas{display:none!important}.card-qr-panel #qrCode img{display:block!important;position:static!important;width:100%!important;height:100%!important;margin:0!important;transform:none!important}
