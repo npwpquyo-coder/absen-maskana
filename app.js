@@ -1,96 +1,60 @@
-/* =========================================================
-   ABSEN MASKANA
-   app.js - versi online / multi-HP / multi-laptop
-   Supabase + Realtime + localStorage fallback
-   ========================================================= */
-
 (() => {
   "use strict";
 
-  /* =========================================================
-     1. KONFIGURASI SUPABASE
-     ========================================================= */
+  /* =====================================================
+     KONFIGURASI
+  ===================================================== */
 
   const SUPABASE_URL =
-    window.SUPABASE_URL ||
-    window.supabaseUrl ||
-    window.SUPABASE_CONFIG?.url ||
-    "";
+    window.SUPABASE_URL || "";
 
   const SUPABASE_KEY =
-    window.SUPABASE_ANON_KEY ||
-    window.SUPABASE_PUBLISHABLE_KEY ||
-    window.supabaseAnonKey ||
-    window.SUPABASE_CONFIG?.key ||
-    "";
+    window.SUPABASE_ANON_KEY || "";
 
-  let db = null;
+  let supabase = null;
 
-  try {
-    if (
-      window.supabase &&
-      typeof window.supabase.createClient === "function" &&
-      SUPABASE_URL &&
-      SUPABASE_KEY
-    ) {
-      db = window.supabase.createClient(
+  if (
+    window.supabase &&
+    SUPABASE_URL &&
+    SUPABASE_KEY
+  ) {
+    try {
+      supabase = window.supabase.createClient(
         SUPABASE_URL,
         SUPABASE_KEY
       );
+    } catch (error) {
+      console.error(
+        "Supabase gagal dibuat:",
+        error
+      );
     }
-  } catch (error) {
-    console.error("Gagal membuat koneksi Supabase:", error);
   }
 
-  /* =========================================================
-     2. KONSTANTA
-     ========================================================= */
-
-  const STORAGE_PARTICIPANTS = "maskana_participants";
-  const STORAGE_ATTENDANCE = "maskana_attendance";
-
-  const TABLE_PARTICIPANTS = "participants";
-  const TABLE_ATTENDANCE = "attendance";
+  /* =====================================================
+     DATA
+  ===================================================== */
 
   let participants = [];
   let attendance = [];
 
-  let realtimeChannel = null;
+  let currentParticipant = null;
 
-  /* =========================================================
-     3. HELPER DOM
-     ========================================================= */
+  const PARTICIPANT_TABLE =
+    "participants";
 
-  function $(selector) {
-    return document.querySelector(selector);
-  }
+  const ATTENDANCE_TABLE =
+    "attendance";
 
-  function $all(selector) {
-    return Array.from(document.querySelectorAll(selector));
-  }
+  /* =====================================================
+     HELPER
+  ===================================================== */
 
-  function byId(id) {
+  function $(id) {
     return document.getElementById(id);
   }
 
-  function setText(id, value) {
-    const el = byId(id);
-    if (el) el.textContent = value ?? "";
-  }
-
-  function show(el) {
-    if (!el) return;
-    el.hidden = false;
-    el.style.display = "";
-  }
-
-  function hide(el) {
-    if (!el) return;
-    el.hidden = true;
-    el.style.display = "none";
-  }
-
-  function safeHTML(value) {
+  function escapeHTML(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -99,284 +63,379 @@
       .replace(/'/g, "&#039;");
   }
 
-  function escapeCSV(value) {
-    const text = String(value ?? "");
-    return `"${text.replace(/"/g, '""')}"`;
-  }
+  function formatTime(value) {
+    const date = new Date(value);
 
-  /* =========================================================
-     4. ID UNIK
-     ========================================================= */
+    if (isNaN(date.getTime())) {
+      return "-";
+    }
 
-  function generateId() {
-    const time = Date.now().toString(36).toUpperCase();
-
-    const random = Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase();
-
-    return `MKN-${time}-${random}`;
-  }
-
-  /* =========================================================
-     5. TANGGAL / WAKTU
-     ========================================================= */
-
-  function nowDate() {
-    return new Date();
-  }
-
-  function formatTime(dateValue) {
-    const d = new Date(dateValue);
-
-    if (Number.isNaN(d.getTime())) return "-";
-
-    return d.toLocaleTimeString("id-ID", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false
-    });
-  }
-
-  function formatDate(dateValue) {
-    const d = new Date(dateValue);
-
-    if (Number.isNaN(d.getTime())) return "-";
-
-    return d.toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric"
-    });
-  }
-
-  function updateClock() {
-    const now = nowDate();
-
-    setText(
-      "today",
-      now.toLocaleDateString("id-ID", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric"
-      })
-    );
-
-    setText(
-      "eventDate",
-      now.toLocaleDateString("id-ID", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric"
-      })
-    );
-
-    setText(
-      "currentTime",
-      now.toLocaleTimeString("id-ID", {
+    return date.toLocaleTimeString(
+      "id-ID",
+      {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
         hour12: false
-      })
+      }
     );
   }
 
-  /* =========================================================
-     6. LOCAL STORAGE
-     ========================================================= */
+  function formatDate(value) {
+    const date = new Date(value);
 
-  function loadLocalData() {
+    if (isNaN(date.getTime())) {
+      return "-";
+    }
+
+    return date.toLocaleDateString(
+      "id-ID",
+      {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+      }
+    );
+  }
+
+  function generateId() {
+    return (
+      "MKN-" +
+      Date.now().toString(36).toUpperCase() +
+      "-" +
+      Math.random()
+        .toString(36)
+        .substring(2, 7)
+        .toUpperCase()
+    );
+  }
+
+  /* =====================================================
+     TOAST
+  ===================================================== */
+
+  function toast(message) {
+    const el = $("toast");
+
+    if (!el) {
+      alert(message);
+      return;
+    }
+
+    el.textContent = message;
+    el.classList.add("show");
+
+    clearTimeout(window.maskanaToastTimer);
+
+    window.maskanaToastTimer =
+      setTimeout(() => {
+        el.classList.remove("show");
+      }, 3000);
+  }
+
+  /* =====================================================
+     NAVIGASI TAB
+  ===================================================== */
+
+  function openTab(tabName) {
+    const tabs =
+      document.querySelectorAll(".tab");
+
+    const navItems =
+      document.querySelectorAll(
+        ".nav-item"
+      );
+
+    tabs.forEach((tab) => {
+      tab.classList.toggle(
+        "active",
+        tab.id === tabName
+      );
+    });
+
+    navItems.forEach((item) => {
+      item.classList.toggle(
+        "active",
+        item.dataset.tab === tabName
+      );
+    });
+
+    const titles = {
+      dashboard:
+        "Selamat datang 👋",
+
+      scan:
+        "Scan Kehadiran",
+
+      peserta:
+        "Data Peserta",
+
+      rekap:
+        "Rekap Kehadiran Desa"
+    };
+
+    $("pageTitle").textContent =
+      titles[tabName] ||
+      "Selamat datang 👋";
+
+    /*
+     * Jika masuk halaman scan,
+     * fokuskan scanner.
+     */
+    if (tabName === "scan") {
+      setTimeout(() => {
+        const input =
+          $("scanInput");
+
+        if (input) {
+          input.focus();
+        }
+      }, 100);
+    }
+  }
+
+  function setupNavigation() {
+    /*
+     * MENU KIRI
+     */
+    document
+      .querySelectorAll(".nav-item")
+      .forEach((button) => {
+        button.addEventListener(
+          "click",
+          () => {
+            openTab(
+              button.dataset.tab
+            );
+          }
+        );
+      });
+
+    /*
+     * TOMBOL "Mulai scan"
+     */
+    document
+      .querySelectorAll("[data-go]")
+      .forEach((button) => {
+        button.addEventListener(
+          "click",
+          () => {
+            openTab(
+              button.dataset.go
+            );
+          }
+        );
+      });
+  }
+
+  /* =====================================================
+     TANGGAL
+  ===================================================== */
+
+  function updateDate() {
+    const now = new Date();
+
+    $("today").textContent =
+      now
+        .toLocaleDateString(
+          "id-ID",
+          {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric"
+          }
+        )
+        .toUpperCase();
+
+    $("eventDate").textContent =
+      now.toLocaleDateString(
+        "id-ID",
+        {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric"
+        }
+      );
+  }
+
+  /* =====================================================
+     LOCAL STORAGE
+  ===================================================== */
+
+  function saveLocal() {
+    localStorage.setItem(
+      "maskana_participants",
+      JSON.stringify(participants)
+    );
+
+    localStorage.setItem(
+      "maskana_attendance",
+      JSON.stringify(attendance)
+    );
+  }
+
+  function loadLocal() {
     try {
-      const p = localStorage.getItem(STORAGE_PARTICIPANTS);
-      const a = localStorage.getItem(STORAGE_ATTENDANCE);
+      participants =
+        JSON.parse(
+          localStorage.getItem(
+            "maskana_participants"
+          ) || "[]"
+        );
 
-      participants = p ? JSON.parse(p) : [];
-      attendance = a ? JSON.parse(a) : [];
+      attendance =
+        JSON.parse(
+          localStorage.getItem(
+            "maskana_attendance"
+          ) || "[]"
+        );
 
-      if (!Array.isArray(participants)) participants = [];
-      if (!Array.isArray(attendance)) attendance = [];
+      if (!Array.isArray(participants)) {
+        participants = [];
+      }
+
+      if (!Array.isArray(attendance)) {
+        attendance = [];
+      }
     } catch (error) {
-      console.error("Gagal membaca localStorage:", error);
+      console.error(error);
 
       participants = [];
       attendance = [];
     }
   }
 
-  function saveLocalData() {
-    try {
-      localStorage.setItem(
-        STORAGE_PARTICIPANTS,
-        JSON.stringify(participants)
-      );
+  /* =====================================================
+     SUPABASE LOAD PESERTA
+  ===================================================== */
 
-      localStorage.setItem(
-        STORAGE_ATTENDANCE,
-        JSON.stringify(attendance)
-      );
-    } catch (error) {
-      console.error("Gagal menyimpan localStorage:", error);
-    }
-  }
-
-  /* =========================================================
-     7. STATUS KONEKSI
-     ========================================================= */
-
-  function setConnectionStatus(online, message = "") {
-    const candidates = [
-      "connectionStatus",
-      "dbStatus",
-      "onlineStatus",
-      "supabaseStatus"
-    ];
-
-    let el = null;
-
-    for (const id of candidates) {
-      el = byId(id);
-      if (el) break;
-    }
-
-    if (!el) return;
-
-    el.textContent =
-      message ||
-      (online ? "ONLINE" : "OFFLINE");
-
-    el.classList.toggle("online", online);
-    el.classList.toggle("offline", !online);
-  }
-
-  /* =========================================================
-     8. LOAD PESERTA DARI SUPABASE
-     ========================================================= */
-
-  async function loadParticipantsFromSupabase() {
-    if (!db) {
-      console.warn("Supabase belum terhubung.");
-      return false;
+  async function loadParticipants() {
+    if (!supabase) {
+      return;
     }
 
     try {
-      const { data, error } = await db
-        .from(TABLE_PARTICIPANTS)
-        .select("*")
-        .order("name", { ascending: true });
+      const result =
+        await supabase
+          .from(PARTICIPANT_TABLE)
+          .select("*")
+          .order("name", {
+            ascending: true
+          });
 
-      if (error) throw error;
+      if (result.error) {
+        throw result.error;
+      }
 
-      participants = Array.isArray(data) ? data : [];
+      participants =
+        result.data || [];
 
-      saveLocalData();
-      renderParticipants();
-      renderDashboard();
+      saveLocal();
 
-      setConnectionStatus(true, "ONLINE");
+      renderAll();
 
-      return true;
+      console.log(
+        "Peserta berhasil dimuat:",
+        participants.length
+      );
     } catch (error) {
       console.error(
-        "Gagal mengambil participants:",
+        "Gagal mengambil peserta:",
         error
       );
-
-      setConnectionStatus(false, "OFFLINE");
-
-      return false;
     }
   }
 
-  /* =========================================================
-     9. LOAD KEHADIRAN DARI SUPABASE
-     ========================================================= */
+  /* =====================================================
+     SUPABASE LOAD KEHADIRAN
+  ===================================================== */
 
-  async function loadAttendanceFromSupabase() {
-    if (!db) return false;
+  async function loadAttendance() {
+    if (!supabase) {
+      return;
+    }
 
     try {
-      const { data, error } = await db
-        .from(TABLE_ATTENDANCE)
-        .select("*")
-        .order("time", { ascending: false });
+      const result =
+        await supabase
+          .from(ATTENDANCE_TABLE)
+          .select("*")
+          .order("time", {
+            ascending: false
+          });
 
-      if (error) throw error;
+      if (result.error) {
+        throw result.error;
+      }
 
-      attendance = Array.isArray(data) ? data : [];
+      attendance =
+        result.data || [];
 
-      saveLocalData();
-      renderAttendance();
-      renderDashboard();
+      saveLocal();
 
-      setConnectionStatus(true, "ONLINE");
+      renderAll();
 
-      return true;
+      console.log(
+        "Kehadiran berhasil dimuat:",
+        attendance.length
+      );
     } catch (error) {
       console.error(
-        "Gagal mengambil attendance:",
+        "Gagal mengambil kehadiran:",
         error
       );
-
-      setConnectionStatus(false, "OFFLINE");
-
-      return false;
     }
   }
 
-  /* =========================================================
-     10. LOAD SEMUA DATA
-     ========================================================= */
+  /* =====================================================
+     LOAD ONLINE
+  ===================================================== */
 
-  async function loadAllData() {
-    loadLocalData();
+  async function loadOnline() {
+    if (!supabase) {
+      console.warn(
+        "Supabase belum terhubung."
+      );
 
-    renderParticipants();
-    renderAttendance();
-    renderDashboard();
-
-    if (!db) {
-      setConnectionStatus(false, "MODE LOKAL");
       return;
     }
 
     await Promise.all([
-      loadParticipantsFromSupabase(),
-      loadAttendanceFromSupabase()
+      loadParticipants(),
+      loadAttendance()
     ]);
   }
 
-  /* =========================================================
-     11. REALTIME SUPABASE
-     ========================================================= */
+  /* =====================================================
+     REALTIME
+  ===================================================== */
 
-  function subscribeRealtime() {
-    if (!db) return;
+  function setupRealtime() {
+    if (!supabase) {
+      return;
+    }
 
     try {
-      if (realtimeChannel) {
-        db.removeChannel(realtimeChannel);
-      }
-
-      realtimeChannel = db
-        .channel("maskana-live-sync")
+      supabase
+        .channel(
+          "maskana-realtime"
+        )
 
         .on(
           "postgres_changes",
           {
             event: "*",
             schema: "public",
-            table: TABLE_PARTICIPANTS
+            table: PARTICIPANT_TABLE
           },
           async () => {
             console.log(
-              "Realtime: participants berubah"
+              "Data peserta berubah."
             );
 
-            await loadParticipantsFromSupabase();
+            await loadParticipants();
           }
         )
 
@@ -385,1323 +444,1872 @@
           {
             event: "*",
             schema: "public",
-            table: TABLE_ATTENDANCE
+            table: ATTENDANCE_TABLE
           },
           async () => {
             console.log(
-              "Realtime: attendance berubah"
+              "Data kehadiran berubah."
             );
 
-            await loadAttendanceFromSupabase();
+            await loadAttendance();
           }
         )
 
-        .subscribe((status) => {
-          console.log(
-            "Supabase realtime:",
-            status
-          );
-        });
+        .subscribe();
     } catch (error) {
       console.error(
-        "Gagal subscribe realtime:",
+        "Realtime error:",
         error
       );
     }
   }
 
-  /* =========================================================
-     12. CARI PESERTA
-     ========================================================= */
+  /* =====================================================
+     RENDER DASHBOARD
+  ===================================================== */
+
+  function renderDashboard() {
+    const today =
+      new Date().toDateString();
+
+    const todayAttendance =
+      attendance.filter((item) => {
+        return (
+          new Date(item.time)
+            .toDateString() === today
+        );
+      });
+
+    $("totalPeserta").textContent =
+      participants.length;
+
+    $("totalHadir").textContent =
+      todayAttendance.length;
+
+    const rate =
+      participants.length
+        ? Math.round(
+            todayAttendance.length /
+              participants.length *
+              100
+          )
+        : 0;
+
+    $("presentRate").textContent =
+      `${rate}% dari peserta`;
+
+    const villages =
+      new Set(
+        participants
+          .map((p) => p.village)
+          .filter(Boolean)
+      );
+
+    const hadirVillages =
+      new Set(
+        todayAttendance
+          .map((a) => {
+            const p =
+              findParticipant(
+                a.participant_id
+              );
+
+            return p?.village;
+          })
+          .filter(Boolean)
+      );
+
+    $("totalDesa").textContent =
+      hadirVillages.size;
+
+    $("villageRate").textContent =
+      `Dari ${villages.size} desa terdaftar`;
+
+    if (
+      todayAttendance.length
+    ) {
+      const latest =
+        todayAttendance[0];
+
+      const p =
+        findParticipant(
+          latest.participant_id
+        );
+
+      if (p) {
+        $("lastScan").textContent =
+          p.name;
+
+        $("lastTime").textContent =
+          formatTime(latest.time);
+      }
+    } else {
+      $("lastScan").textContent =
+        "—";
+
+      $("lastTime").textContent =
+        "Belum ada kehadiran";
+    }
+
+    renderRecent();
+    renderVillageBars();
+  }
+
+  /* =====================================================
+     RECENT
+  ===================================================== */
+
+  function renderRecent() {
+    const container =
+      $("recentList");
+
+    if (!container) return;
+
+    const today =
+      new Date().toDateString();
+
+    const items =
+      attendance
+        .filter(
+          (a) =>
+            new Date(a.time)
+              .toDateString() === today
+        )
+        .slice(0, 8);
+
+    if (!items.length) {
+      container.classList.add(
+        "empty"
+      );
+
+      container.innerHTML =
+        "Belum ada peserta yang hadir.";
+
+      return;
+    }
+
+    container.classList.remove(
+      "empty"
+    );
+
+    container.innerHTML =
+      items
+        .map((a) => {
+          const p =
+            findParticipant(
+              a.participant_id
+            );
+
+          if (!p) return "";
+
+          return `
+            <div class="recent-item">
+              <div class="recent-avatar">
+                ${escapeHTML(
+                  p.name
+                    .substring(0, 2)
+                    .toUpperCase()
+                )}
+              </div>
+
+              <div>
+                <strong>
+                  ${escapeHTML(p.name)}
+                </strong>
+
+                <small>
+                  ${escapeHTML(
+                    p.village || "-"
+                  )}
+                </small>
+              </div>
+
+              <time>
+                ${formatTime(a.time)}
+              </time>
+            </div>
+          `;
+        })
+        .join("");
+  }
+
+  /* =====================================================
+     VILLAGE BAR
+  ===================================================== */
+
+  function renderVillageBars() {
+    const container =
+      $("villageBars");
+
+    if (!container) return;
+
+    const map = {};
+
+    participants.forEach((p) => {
+      const village =
+        p.village || "Tidak diketahui";
+
+      if (!map[village]) {
+        map[village] = {
+          total: 0,
+          hadir: 0
+        };
+      }
+
+      map[village].total++;
+    });
+
+    const today =
+      new Date().toDateString();
+
+    attendance
+      .filter(
+        (a) =>
+          new Date(a.time)
+            .toDateString() === today
+      )
+      .forEach((a) => {
+        const p =
+          findParticipant(
+            a.participant_id
+          );
+
+        if (!p) return;
+
+        const village =
+          p.village ||
+          "Tidak diketahui";
+
+        if (!map[village]) {
+          map[village] = {
+            total: 0,
+            hadir: 0
+          };
+        }
+
+        map[village].hadir++;
+      });
+
+    const entries =
+      Object.entries(map)
+        .sort(
+          (a, b) =>
+            b[1].hadir -
+            a[1].hadir
+        )
+        .slice(0, 8);
+
+    if (!entries.length) {
+      container.classList.add(
+        "empty"
+      );
+
+      container.innerHTML =
+        "Belum ada data kehadiran.";
+
+      return;
+    }
+
+    container.classList.remove(
+      "empty"
+    );
+
+    container.innerHTML =
+      entries
+        .map(([village, data]) => {
+          const percentage =
+            data.total
+              ? Math.round(
+                  data.hadir /
+                    data.total *
+                    100
+                )
+              : 0;
+
+          return `
+            <div class="village-row">
+              <div class="village-row-head">
+                <span>
+                  ${escapeHTML(village)}
+                </span>
+
+                <strong>
+                  ${data.hadir}/${data.total}
+                </strong>
+              </div>
+
+              <div class="bar">
+                <span
+                  style="width:${percentage}%"
+                ></span>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+  }
+
+  /* =====================================================
+     RENDER PESERTA
+  ===================================================== */
+
+  function renderParticipants() {
+    const tbody =
+      $("participantRows");
+
+    if (!tbody) return;
+
+    const search =
+      (
+        $("participantSearch")
+          ?.value || ""
+      )
+        .toLowerCase()
+        .trim();
+
+    const filtered =
+      participants.filter(
+        (p) => {
+          const text =
+            [
+              p.name,
+              p.phone,
+              p.village,
+              p.district,
+              p.regency,
+              p.id
+            ]
+              .join(" ")
+              .toLowerCase();
+
+          return text.includes(
+            search
+          );
+        }
+      );
+
+    $("participantCount").textContent =
+      `${participants.length} peserta terdaftar`;
+
+    if (!filtered.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5"
+              style="text-align:center;padding:30px">
+            Belum ada data peserta.
+          </td>
+        </tr>
+      `;
+
+      return;
+    }
+
+    tbody.innerHTML =
+      filtered
+        .map(
+          (p) => `
+            <tr>
+              <td>
+                <strong>
+                  ${escapeHTML(p.name)}
+                </strong>
+                <small>
+                  ${escapeHTML(p.id)}
+                </small>
+              </td>
+
+              <td>
+                ${escapeHTML(
+                  [
+                    p.village,
+                    p.district,
+                    p.regency
+                  ]
+                    .filter(Boolean)
+                    .join(", ")
+                )}
+              </td>
+
+              <td>
+                ${escapeHTML(
+                  p.phone || "-"
+                )}
+              </td>
+
+              <td>
+                <button
+                  class="text-button qr-button"
+                  data-id="${escapeHTML(p.id)}"
+                >
+                  Lihat QR
+                </button>
+              </td>
+
+              <td>
+                <button
+                  class="text-button delete-button"
+                  data-id="${escapeHTML(p.id)}"
+                >
+                  Hapus
+                </button>
+              </td>
+            </tr>
+          `
+        )
+        .join("");
+
+    /*
+     * Tombol QR
+     */
+    tbody
+      .querySelectorAll(
+        ".qr-button"
+      )
+      .forEach((button) => {
+        button.addEventListener(
+          "click",
+          () => {
+            const p =
+              findParticipant(
+                button.dataset.id
+              );
+
+            if (p) {
+              showQR(p);
+            }
+          }
+        );
+      });
+
+    /*
+     * Tombol hapus
+     */
+    tbody
+      .querySelectorAll(
+        ".delete-button"
+      )
+      .forEach((button) => {
+        button.addEventListener(
+          "click",
+          async () => {
+            await deleteParticipant(
+              button.dataset.id
+            );
+          }
+        );
+      });
+  }
+
+  /* =====================================================
+     CARI PESERTA
+  ===================================================== */
 
   function findParticipant(id) {
-    if (!id) return null;
-
-    const cleanId = String(id)
-      .trim()
-      .toLowerCase();
-
-    return (
-      participants.find(
-        (p) =>
-          String(p.id ?? "")
-            .trim()
-            .toLowerCase() === cleanId
-      ) || null
+    return participants.find(
+      (p) =>
+        String(p.id) ===
+        String(id)
     );
   }
 
-  function findParticipantByName(name) {
-    const clean = String(name ?? "")
-      .trim()
-      .toLowerCase();
-
-    return (
-      participants.find(
-        (p) =>
-          String(p.name ?? "")
-            .trim()
-            .toLowerCase() === clean
-      ) || null
-    );
-  }
-
-  /* =========================================================
-     13. TAMBAH PESERTA
-     ========================================================= */
+  /* =====================================================
+     TAMBAH PESERTA
+  ===================================================== */
 
   async function addParticipant(data) {
     const participant = {
-      id: data.id || generateId(),
-      name: String(data.name || "").trim(),
-      phone: String(data.phone || "").trim(),
-      village: String(data.village || "").trim(),
-      district: String(data.district || "").trim(),
-      regency: String(data.regency || "").trim()
+      id: generateId(),
+      name: data.name.trim(),
+      phone: data.phone.trim(),
+      village: data.village.trim(),
+      district: data.district.trim(),
+      regency: data.regency.trim()
     };
 
-    if (!participant.name) {
-      alert("Nama peserta wajib diisi.");
-      return false;
-    }
-
-    const duplicate = participants.some(
-      (p) =>
-        String(p.id).toLowerCase() ===
-        participant.id.toLowerCase()
+    /*
+     * Simpan lokal dulu
+     */
+    participants.push(
+      participant
     );
 
-    if (duplicate) {
-      alert("ID peserta sudah digunakan.");
-      return false;
-    }
+    saveLocal();
+    renderAll();
 
-    /* Tambahkan lokal dulu agar UI langsung berubah */
-    participants.push(participant);
-    saveLocalData();
-
-    renderParticipants();
-    renderDashboard();
-
-    /* Kirim ke Supabase */
-    if (db) {
+    /*
+     * Simpan ke Supabase
+     */
+    if (supabase) {
       try {
-        const { error } = await db
-          .from(TABLE_PARTICIPANTS)
-          .insert([participant]);
+        const result =
+          await supabase
+            .from(PARTICIPANT_TABLE)
+            .insert([
+              participant
+            ]);
 
-        if (error) {
-          console.error(
-            "Gagal menyimpan peserta:",
-            error
-          );
-
-          /*
-           * Jangan hapus data lokal.
-           * Kita biarkan agar data tidak hilang
-           * jika koneksi internet sedang bermasalah.
-           */
-          setConnectionStatus(false, "BELUM TERSINKRON");
-
-          return false;
+        if (result.error) {
+          throw result.error;
         }
 
-        setConnectionStatus(true, "TERSINKRON");
+        toast(
+          "Peserta berhasil disimpan online."
+        );
       } catch (error) {
-        console.error(error);
-
-        setConnectionStatus(
-          false,
-          "KONEKSI BERMASALAH"
+        console.error(
+          "Supabase insert peserta:",
+          error
         );
 
-        return false;
+        toast(
+          "Tersimpan di perangkat, tetapi belum masuk server."
+        );
+
+        return;
       }
     }
 
-    return true;
+    /*
+     * Tampilkan QR
+     */
+    showQR(participant);
   }
 
-  /* =========================================================
-     14. HAPUS PESERTA
-     ========================================================= */
+  /* =====================================================
+     HAPUS PESERTA
+  ===================================================== */
 
-  async function deleteParticipant(id) {
-    const participant = findParticipant(id);
+  async function deleteParticipant(
+    id
+  ) {
+    const participant =
+      findParticipant(id);
 
-    if (!participant) {
-      alert("Peserta tidak ditemukan.");
-      return;
-    }
+    if (!participant) return;
 
-    const ok = confirm(
-      `Hapus peserta "${participant.name}"?`
-    );
+    const ok =
+      confirm(
+        `Hapus peserta "${participant.name}"?`
+      );
 
     if (!ok) return;
 
-    participants = participants.filter(
-      (p) => p.id !== id
-    );
-
-    attendance = attendance.filter(
-      (a) => a.participant_id !== id
-    );
-
-    saveLocalData();
-
-    renderParticipants();
-    renderAttendance();
-    renderDashboard();
-
-    if (!db) return;
-
-    try {
-      const { error } = await db
-        .from(TABLE_PARTICIPANTS)
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
-
-      setConnectionStatus(true, "TERSINKRON");
-    } catch (error) {
-      console.error(
-        "Gagal menghapus peserta:",
-        error
+    participants =
+      participants.filter(
+        (p) =>
+          String(p.id) !==
+          String(id)
       );
-
-      setConnectionStatus(false, "BELUM TERSINKRON");
-    }
-  }
-
-  /* =========================================================
-     15. CATAT KEHADIRAN
-     ========================================================= */
-
-  async function recordAttendance(participant) {
-    if (!participant) {
-      alert("Peserta tidak ditemukan.");
-      return false;
-    }
-
-    const now = new Date();
 
     /*
-     * Tabel attendance:
-     * id
-     * participant_id
-     * time
+     * Hapus kehadiran lokal
      */
-
-    const record = {
-      participant_id: participant.id,
-      time: now.toISOString()
-    };
-
-    /* Cek apakah sudah hadir */
-    const alreadyLocal = attendance.some(
-      (a) =>
-        a.participant_id === participant.id &&
-        new Date(a.time).toDateString() ===
-          now.toDateString()
-    );
-
-    if (alreadyLocal) {
-      showAttendanceSuccess(
-        participant,
-        "Peserta sudah tercatat hari ini."
+    attendance =
+      attendance.filter(
+        (a) =>
+          String(
+            a.participant_id
+          ) !== String(id)
       );
 
-      return false;
-    }
+    saveLocal();
 
-    /* Simpan lokal dulu */
-    const localRecord = {
-      id:
-        Date.now() +
-        Math.floor(Math.random() * 1000),
-      ...record
-    };
+    renderAll();
 
-    attendance.unshift(localRecord);
-
-    saveLocalData();
-
-    renderAttendance();
-    renderDashboard();
-
-    /* Simpan online */
-    if (db) {
+    /*
+     * Hapus online
+     */
+    if (supabase) {
       try {
-        const { error } = await db
-          .from(TABLE_ATTENDANCE)
-          .insert([record]);
+        const result =
+          await supabase
+            .from(PARTICIPANT_TABLE)
+            .delete()
+            .eq("id", id);
 
-        if (error) {
-          console.error(
-            "Gagal menyimpan attendance:",
-            error
-          );
-
-          setConnectionStatus(
-            false,
-            "KEHADIRAN BELUM ONLINE"
-          );
-
-          showAttendanceSuccess(
-            participant,
-            "Tersimpan sementara di perangkat."
-          );
-
-          return false;
+        if (result.error) {
+          throw result.error;
         }
 
-        setConnectionStatus(true, "TERSINKRON");
-
-        showAttendanceSuccess(
-          participant,
-          "Kehadiran berhasil dan tersimpan online."
+        toast(
+          "Peserta berhasil dihapus."
         );
-
-        return true;
       } catch (error) {
         console.error(error);
 
-        setConnectionStatus(
-          false,
-          "KONEKSI BERMASALAH"
+        toast(
+          "Penghapusan server gagal."
         );
-
-        showAttendanceSuccess(
-          participant,
-          "Tersimpan sementara."
-        );
-
-        return false;
       }
     }
-
-    showAttendanceSuccess(
-      participant,
-      "Kehadiran berhasil."
-    );
-
-    return true;
   }
 
-  /* =========================================================
-     16. TAMPILKAN HASIL SCAN
-     ========================================================= */
+  /* =====================================================
+     FORM TAMBAH PESERTA
+  ===================================================== */
 
-  function showAttendanceSuccess(
-    participant,
-    message
+  function setupParticipantForm() {
+    const form =
+      $("participantForm");
+
+    if (!form) return;
+
+    form.addEventListener(
+      "submit",
+      async (event) => {
+        /*
+         * Sangat penting:
+         * cegah dialog ditutup otomatis
+         */
+        event.preventDefault();
+
+        const formData =
+          new FormData(form);
+
+        const data = {
+          name:
+            formData.get("name") || "",
+
+          phone:
+            formData.get("phone") || "",
+
+          village:
+            formData.get("village") || "",
+
+          district:
+            formData.get("district") || "",
+
+          regency:
+            formData.get("regency") || ""
+        };
+
+        if (
+          !data.name ||
+          !data.phone ||
+          !data.village ||
+          !data.district ||
+          !data.regency
+        ) {
+          toast(
+            "Semua data peserta wajib diisi."
+          );
+
+          return;
+        }
+
+        await addParticipant(
+          data
+        );
+
+        form.reset();
+
+        $("participantModal").close();
+      }
+    );
+  }
+
+  /* =====================================================
+     MODAL TAMBAH PESERTA
+  ===================================================== */
+
+  function setupParticipantModal() {
+    const button =
+      $("addParticipant");
+
+    const modal =
+      $("participantModal");
+
+    if (
+      !button ||
+      !modal
+    ) {
+      return;
+    }
+
+    button.addEventListener(
+      "click",
+      () => {
+        modal.showModal();
+      }
+    );
+  }
+
+  /* =====================================================
+     QR
+  ===================================================== */
+
+  function showQR(participant) {
+    currentParticipant =
+      participant;
+
+    $("cardName").textContent =
+      participant.name;
+
+    $("cardAddress").textContent =
+      [
+        participant.village,
+        participant.district,
+        participant.regency
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+    $("cardPhone").textContent =
+      participant.phone || "-";
+
+    const qrContainer =
+      $("qrCode");
+
+    qrContainer.innerHTML = "";
+
+    if (
+      window.QRCode
+    ) {
+      new QRCode(
+        qrContainer,
+        {
+          text:
+            participant.id,
+          width: 150,
+          height: 150,
+          correctLevel:
+            QRCode.CorrectLevel.H
+        }
+      );
+    }
+
+    $("qrModal").showModal();
+  }
+
+  /* =====================================================
+     TUTUP QR
+  ===================================================== */
+
+  function setupQRModal() {
+    document
+      .querySelectorAll(
+        ".close-qr"
+      )
+      .forEach((button) => {
+        button.addEventListener(
+          "click",
+          () => {
+            $("qrModal").close();
+          }
+        );
+      });
+  }
+
+  /* =====================================================
+     DOWNLOAD KARTU
+  ===================================================== */
+
+  function setupDownloadCard() {
+    const button =
+      $("downloadCard");
+
+    if (!button) return;
+
+    button.addEventListener(
+      "click",
+      async () => {
+        if (
+          !window.html2canvas
+        ) {
+          toast(
+            "html2canvas belum tersedia."
+          );
+
+          return;
+        }
+
+        const card =
+          $("participantCard");
+
+        try {
+          const canvas =
+            await html2canvas(
+              card,
+              {
+                scale: 3,
+                backgroundColor:
+                  null
+              }
+            );
+
+          const link =
+            document.createElement(
+              "a"
+            );
+
+          link.download =
+            `kartu-${currentParticipant?.id || "peserta"}.png`;
+
+          link.href =
+            canvas.toDataURL(
+              "image/png"
+            );
+
+          link.click();
+
+          toast(
+            "Kartu berhasil dibuat."
+          );
+        } catch (error) {
+          console.error(error);
+
+          toast(
+            "Gagal membuat kartu."
+          );
+        }
+      }
+    );
+  }
+
+  /* =====================================================
+     SCANNER
+  ===================================================== */
+
+  function setupScanner() {
+    const input =
+      $("scanInput");
+
+    if (!input) return;
+
+    input.addEventListener(
+      "keydown",
+      async (event) => {
+        if (
+          event.key !== "Enter"
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+
+        const code =
+          input.value.trim();
+
+        if (!code) return;
+
+        await processScan(
+          code
+        );
+
+        input.value = "";
+
+        setTimeout(() => {
+          input.focus();
+        }, 100);
+      }
+    );
+
+    input.addEventListener(
+      "blur",
+      () => {
+        /*
+         * Jangan paksa fokus jika
+         * user sedang berada di halaman lain.
+         */
+      }
+    );
+  }
+
+  /* =====================================================
+     SCAN
+  ===================================================== */
+
+  async function processScan(
+    code
   ) {
-    const name =
-      participant.name || "Peserta";
-
-    const avatar = name
-      .substring(0, 2)
-      .toUpperCase();
-
-    setText("resultName", name);
-    setText(
-      "resultMessage",
-      message || "Kehadiran berhasil!"
-    );
-
-    setText(
-      "resultAvatar",
-      avatar
-    );
-
-    setText(
-      "resultVillage",
-      participant.village || "-"
-    );
-
-    setText(
-      "resultDistrict",
-      participant.district || "-"
-    );
-
-    setText(
-      "resultRegency",
-      participant.regency || "-"
-    );
-
-    setText(
-      "resultTime",
-      formatTime(new Date())
-    );
+    let id = String(
+      code || ""
+    ).trim();
 
     /*
-     * Beberapa kemungkinan ID card hasil scan
+     * Jika QR berisi URL
      */
-    const ids = [
-      "attendanceResult",
-      "scanResult",
-      "successResult",
-      "hasilScan"
-    ];
+    try {
+      if (
+        id.startsWith(
+          "http://"
+        ) ||
+        id.startsWith(
+          "https://"
+        )
+      ) {
+        const url =
+          new URL(id);
 
-    for (const id of ids) {
-      const el = byId(id);
-      if (el) {
-        show(el);
-        break;
+        id =
+          url.searchParams.get(
+            "id"
+          ) || id;
       }
+    } catch (_) {}
+
+    /*
+     * Cari berdasarkan ID
+     */
+    let participant =
+      findParticipant(id);
+
+    /*
+     * Coba cari berdasarkan nama
+     */
+    if (!participant) {
+      participant =
+        participants.find(
+          (p) =>
+            String(
+              p.name
+            )
+              .toLowerCase() ===
+            id.toLowerCase()
+        );
     }
-  }
-
-  /* =========================================================
-     17. PROSES QR / SCANNER
-     ========================================================= */
-
-  async function processScan(value) {
-    const raw = String(value ?? "").trim();
-
-    if (!raw) return;
-
-    let id = raw;
-
-    /*
-     * Jika QR berisi URL:
-     * https://.../?id=MKN-123
-     */
-    try {
-      if (
-        raw.startsWith("http://") ||
-        raw.startsWith("https://")
-      ) {
-        const url = new URL(raw);
-
-        id =
-          url.searchParams.get("id") ||
-          url.searchParams.get("participant") ||
-          url.searchParams.get("peserta") ||
-          raw;
-      }
-    } catch (_) {}
-
-    /*
-     * Jika QR berisi JSON
-     */
-    try {
-      if (
-        raw.startsWith("{") &&
-        raw.endsWith("}")
-      ) {
-        const json = JSON.parse(raw);
-
-        id =
-          json.id ||
-          json.participant_id ||
-          json.participantId ||
-          id;
-      }
-    } catch (_) {}
-
-    const participant =
-      findParticipant(id) ||
-      findParticipantByName(id);
 
     if (!participant) {
-      alert(
-        `Peserta dengan kode "${id}" tidak ditemukan.`
+      showScanError(
+        `Kode peserta "${id}" tidak ditemukan.`
       );
 
       return;
     }
 
-    await recordAttendance(participant);
+    await recordAttendance(
+      participant
+    );
   }
 
-  /* =========================================================
-     18. RENDER PESERTA
-     ========================================================= */
+  /* =====================================================
+     HASIL SCAN
+  ===================================================== */
 
-  function renderParticipants() {
-    const containers = [
-      byId("participantsList"),
-      byId("participantList"),
-      byId("dataPeserta"),
-      byId("pesertaList")
-    ].filter(Boolean);
+  function showScanError(
+    message
+  ) {
+    $("scanResult").innerHTML = `
+      <div class="result-placeholder">
+        <div>!</div>
+        <h3>Peserta tidak ditemukan</h3>
+        <p>${escapeHTML(message)}</p>
+      </div>
+    `;
+  }
 
-    if (!containers.length) return;
+  function showScanSuccess(
+    participant,
+    time
+  ) {
+    $("scanResult").innerHTML = `
+      <div class="result-success">
+        <div class="result-icon">✓</div>
 
-    const queryInput =
-      byId("participantSearch") ||
-      byId("searchParticipant") ||
-      byId("searchInput");
+        <p class="eyebrow">
+          KEHADIRAN TERCATAT
+        </p>
 
-    const query = String(
-      queryInput?.value || ""
-    )
-      .trim()
-      .toLowerCase();
+        <h3>
+          ${escapeHTML(
+            participant.name
+          )}
+        </h3>
 
-    const filtered = participants.filter(
-      (p) => {
-        if (!query) return true;
+        <p>
+          ${escapeHTML(
+            participant.village || "-"
+          )}
+          ·
+          ${escapeHTML(
+            participant.district || "-"
+          )}
+        </p>
 
-        return [
-          p.id,
-          p.name,
-          p.phone,
-          p.village,
-          p.district,
-          p.regency
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(query);
-      }
-    );
+        <strong>
+          ${formatTime(time)}
+        </strong>
+      </div>
+    `;
+  }
 
-    const html = filtered
-      .map(
-        (p) => `
-        <div class="participant-item">
-          <div class="participant-info">
-            <strong>${safeHTML(p.name)}</strong>
-            <small>
-              ID: ${safeHTML(p.id)}
-            </small>
-            <small>
-              ${safeHTML(p.village || "-")},
-              ${safeHTML(p.district || "-")},
-              ${safeHTML(p.regency || "-")}
-            </small>
-            <small>
-              ${safeHTML(p.phone || "-")}
-            </small>
-          </div>
+  /* =====================================================
+     CATAT KEHADIRAN
+  ===================================================== */
 
-          <div class="participant-actions">
-            <button
-              type="button"
-              class="btn-delete-participant"
-              data-id="${safeHTML(p.id)}"
-            >
-              Hapus
-            </button>
-          </div>
-        </div>
-        `
-      )
-      .join("");
+  async function recordAttendance(
+    participant
+  ) {
+    const now =
+      new Date();
 
-    containers.forEach(
-      (container) => {
-        container.innerHTML =
-          html ||
-          `<div class="empty-state">
-             Belum ada data peserta.
-           </div>`;
-
-        container
-          .querySelectorAll(
-            ".btn-delete-participant"
-          )
-          .forEach((button) => {
-            button.addEventListener(
-              "click",
-              () => {
-                deleteParticipant(
-                  button.dataset.id
-                );
-              }
+    /*
+     * Cek sudah hadir hari ini
+     */
+    const already =
+      attendance.some(
+        (a) => {
+          const samePerson =
+            String(
+              a.participant_id
+            ) ===
+            String(
+              participant.id
             );
-          });
-      }
-    );
 
-    setText(
-      "participantCount",
-      participants.length
-    );
+          const sameDay =
+            new Date(a.time)
+              .toDateString() ===
+            now.toDateString();
 
-    setText(
-      "totalParticipants",
-      participants.length
-    );
-  }
+          return (
+            samePerson &&
+            sameDay
+          );
+        }
+      );
 
-  /* =========================================================
-     19. RENDER KEHADIRAN
-     ========================================================= */
+    if (already) {
+      showScanSuccess(
+        participant,
+        now
+      );
 
-  function renderAttendance() {
-    const containers = [
-      byId("attendanceList"),
-      byId("attendanceTableBody"),
-      byId("logAttendance"),
-      byId("kehadiranList")
-    ].filter(Boolean);
+      toast(
+        `${participant.name} sudah tercatat hadir hari ini.`
+      );
 
-    if (!containers.length) return;
+      return;
+    }
 
-    const today = new Date();
+    const record = {
+      participant_id:
+        participant.id,
 
-    const todayAttendance =
-      attendance.filter((a) => {
-        const d = new Date(a.time);
+      time:
+        now.toISOString()
+    };
 
-        return (
-          d.toDateString() ===
-          today.toDateString()
+    /*
+     * Supabase
+     */
+    if (supabase) {
+      try {
+        const result =
+          await supabase
+            .from(
+              ATTENDANCE_TABLE
+            )
+            .insert([
+              record
+            ])
+            .select();
+
+        if (result.error) {
+          throw result.error;
+        }
+
+        /*
+         * Ambil data terbaru
+         */
+        await loadAttendance();
+
+        showScanSuccess(
+          participant,
+          now
         );
-      });
 
-    const html = todayAttendance
-      .map((a) => {
-        const p = findParticipant(
-          a.participant_id
+        toast(
+          "Kehadiran berhasil tersimpan online."
         );
 
-        return `
-          <tr>
-            <td>
-              ${safeHTML(
-                p?.name || a.participant_id
-              )}
-            </td>
+        return;
+      } catch (error) {
+        console.error(
+          "Gagal menyimpan attendance:",
+          error
+        );
 
-            <td>
-              ${safeHTML(
-                p?.village || "-"
-              )}
-            </td>
+        /*
+         * Tetap simpan lokal
+         */
+        attendance.unshift({
+          id: Date.now(),
+          ...record
+        });
 
-            <td>
-              ${safeHTML(
-                p?.district || "-"
-              )}
-            </td>
+        saveLocal();
 
-            <td>
-              ${formatTime(a.time)}
-            </td>
+        renderAll();
 
-            <td>
-              <span class="status-hadir">
-                ✓ HADIR
-              </span>
-            </td>
-          </tr>
-        `;
-      })
-      .join("");
+        showScanSuccess(
+          participant,
+          now
+        );
 
-    containers.forEach((container) => {
-      /*
-       * Jika elemen berupa tbody,
-       * langsung isi tr.
-       */
-      if (
-        container.tagName === "TBODY"
-      ) {
-        container.innerHTML =
-          html ||
-          `
-          <tr>
-            <td colspan="5">
-              Belum ada kehadiran hari ini.
-            </td>
-          </tr>
-          `;
-      } else {
-        container.innerHTML =
-          html ||
-          `
-          <div class="empty-state">
-            Belum ada kehadiran hari ini.
-          </div>
-          `;
+        toast(
+          "Internet bermasalah. Kehadiran tersimpan sementara."
+        );
+
+        return;
       }
+    }
+
+    /*
+     * MODE LOKAL
+     */
+    attendance.unshift({
+      id: Date.now(),
+      ...record
     });
 
-    setText(
-      "attendanceCount",
-      todayAttendance.length
-    );
+    saveLocal();
 
-    setText(
-      "todayAttendanceCount",
-      todayAttendance.length
+    renderAll();
+
+    showScanSuccess(
+      participant,
+      now
     );
   }
 
-  /* =========================================================
-     20. DASHBOARD
-     ========================================================= */
+  /* =====================================================
+     RENDER ATTENDANCE
+  ===================================================== */
 
-  function renderDashboard() {
-    const today = new Date();
+  function renderAttendance() {
+    const tbody =
+      $("attendanceRows");
 
-    const todayAttendance =
-      attendance.filter((a) => {
-        const d = new Date(a.time);
+    if (!tbody) return;
 
-        return (
-          d.toDateString() ===
-          today.toDateString()
-        );
+    const search =
+      (
+        $("attendanceSearch")
+          ?.value || ""
+      )
+        .toLowerCase()
+        .trim();
+
+    const today =
+      new Date().toDateString();
+
+    const rows =
+      attendance.filter(
+        (a) => {
+          const sameDay =
+            new Date(a.time)
+              .toDateString() ===
+            today;
+
+          if (!sameDay) {
+            return false;
+          }
+
+          const p =
+            findParticipant(
+              a.participant_id
+            );
+
+          if (!search) {
+            return true;
+          }
+
+          return [
+            p?.name,
+            p?.village,
+            p?.district
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(search);
+        }
+      );
+
+    $("attendanceCount").textContent =
+      `${rows.length} peserta tercatat hadir`;
+
+    if (!rows.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="4"
+              style="text-align:center;padding:30px">
+            Belum ada peserta yang hadir.
+          </td>
+        </tr>
+      `;
+
+      return;
+    }
+
+    tbody.innerHTML =
+      rows
+        .map((a) => {
+          const p =
+            findParticipant(
+              a.participant_id
+            );
+
+          return `
+            <tr>
+              <td>
+                <strong>
+                  ${escapeHTML(
+                    p?.name ||
+                    a.participant_id
+                  )}
+                </strong>
+              </td>
+
+              <td>
+                ${escapeHTML(
+                  [
+                    p?.village,
+                    p?.district,
+                    p?.regency
+                  ]
+                    .filter(Boolean)
+                    .join(", ")
+                )}
+              </td>
+
+              <td>
+                ${formatTime(
+                  a.time
+                )}
+              </td>
+
+              <td>
+                <span class="status-hadir">
+                  ✓ HADIR
+                </span>
+              </td>
+            </tr>
+          `;
+        })
+        .join("");
+  }
+
+  /* =====================================================
+     SEARCH KEHADIRAN
+  ===================================================== */
+
+  function setupAttendanceSearch() {
+    const input =
+      $("attendanceSearch");
+
+    if (!input) return;
+
+    input.addEventListener(
+      "input",
+      () => {
+        renderAttendance();
+      }
+    );
+  }
+
+  /* =====================================================
+     REKAP DESA
+  ===================================================== */
+
+  function renderRecap() {
+    const tbody =
+      $("recapRows");
+
+    if (!tbody) return;
+
+    const villages = {};
+
+    participants.forEach(
+      (p) => {
+        const key =
+          [
+            p.village,
+            p.district,
+            p.regency
+          ]
+            .join("|");
+
+        if (!villages[key]) {
+          villages[key] = {
+            village:
+              p.village || "-",
+
+            district:
+              p.district || "-",
+
+            regency:
+              p.regency || "-",
+
+            total: 0,
+            hadir: 0
+          };
+        }
+
+        villages[key].total++;
+      }
+    );
+
+    const today =
+      new Date().toDateString();
+
+    attendance
+      .filter(
+        (a) =>
+          new Date(a.time)
+            .toDateString() ===
+          today
+      )
+      .forEach((a) => {
+        const p =
+          findParticipant(
+            a.participant_id
+          );
+
+        if (!p) return;
+
+        const key =
+          [
+            p.village,
+            p.district,
+            p.regency
+          ]
+            .join("|");
+
+        if (!villages[key]) {
+          villages[key] = {
+            village:
+              p.village || "-",
+
+            district:
+              p.district || "-",
+
+            regency:
+              p.regency || "-",
+
+            total: 0,
+            hadir: 0
+          };
+        }
+
+        villages[key].hadir++;
       });
 
-    setText(
-      "totalParticipants",
-      participants.length
-    );
+    const data =
+      Object.values(
+        villages
+      );
 
-    setText(
-      "participantCount",
-      participants.length
-    );
+    if (!data.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6"
+              style="text-align:center;padding:30px">
+            Belum ada data desa.
+          </td>
+        </tr>
+      `;
 
-    setText(
-      "attendanceCount",
-      todayAttendance.length
-    );
+      return;
+    }
 
-    setText(
-      "todayAttendanceCount",
-      todayAttendance.length
-    );
+    tbody.innerHTML =
+      data
+        .sort(
+          (a, b) =>
+            a.village.localeCompare(
+              b.village
+            )
+        )
+        .map((v) => {
+          const percentage =
+            v.total
+              ? Math.round(
+                  v.hadir /
+                    v.total *
+                    100
+                )
+              : 0;
 
-    const absent =
-      Math.max(
-        participants.length -
-          todayAttendance.length,
+          return `
+            <tr>
+              <td>
+                ${escapeHTML(
+                  v.village
+                )}
+              </td>
+
+              <td>
+                ${escapeHTML(
+                  v.district
+                )}
+              </td>
+
+              <td>
+                ${escapeHTML(
+                  v.regency
+                )}
+              </td>
+
+              <td>
+                ${v.total}
+              </td>
+
+              <td>
+                ${v.hadir}
+              </td>
+
+              <td>
+                ${percentage}%
+              </td>
+            </tr>
+          `;
+        })
+        .join("");
+
+    renderRecapSummary(
+      data
+    );
+  }
+
+  function renderRecapSummary(
+    data
+  ) {
+    const container =
+      $("recapSummary");
+
+    if (!container) return;
+
+    const total =
+      data.reduce(
+        (sum, item) =>
+          sum + item.total,
         0
       );
 
-    setText(
-      "absentCount",
-      absent
-    );
+    const hadir =
+      data.reduce(
+        (sum, item) =>
+          sum + item.hadir,
+        0
+      );
+
+    const desa =
+      data.length;
+
+    const percentage =
+      total
+        ? Math.round(
+            hadir /
+              total *
+              100
+          )
+        : 0;
+
+    container.innerHTML = `
+      <div class="recap-card">
+        <strong>${desa}</strong>
+        <span>Desa</span>
+      </div>
+
+      <div class="recap-card">
+        <strong>${total}</strong>
+        <span>Terdaftar</span>
+      </div>
+
+      <div class="recap-card">
+        <strong>${hadir}</strong>
+        <span>Hadir</span>
+      </div>
+
+      <div class="recap-card">
+        <strong>${percentage}%</strong>
+        <span>Kehadiran</span>
+      </div>
+    `;
   }
 
-  /* =========================================================
-     21. EKSPOR CSV
-     ========================================================= */
+  /* =====================================================
+     EXPORT CSV
+  ===================================================== */
+
+  function csvEscape(value) {
+    return `"${String(
+      value ?? ""
+    ).replace(
+      /"/g,
+      '""'
+    )}"`;
+  }
 
   function exportCSV() {
     const rows = [
       [
         "ID",
         "Nama",
-        "No HP",
+        "WhatsApp",
         "Desa",
         "Kecamatan",
-        "Kabupaten"
+        "Kabupaten",
+        "Waktu Hadir"
       ]
     ];
 
-    participants.forEach((p) => {
-      rows.push([
-        p.id,
-        p.name,
-        p.phone,
-        p.village,
-        p.district,
-        p.regency
-      ]);
-    });
+    participants.forEach(
+      (p) => {
+        const records =
+          attendance.filter(
+            (a) =>
+              String(
+                a.participant_id
+              ) ===
+              String(p.id)
+          );
 
-    const csv = rows
-      .map((row) =>
-        row.map(escapeCSV).join(",")
-      )
-      .join("\n");
+        if (!records.length) {
+          rows.push([
+            p.id,
+            p.name,
+            p.phone,
+            p.village,
+            p.district,
+            p.regency,
+            ""
+          ]);
 
-    const blob = new Blob(
-      ["\ufeff" + csv],
-      {
-        type: "text/csv;charset=utf-8;"
-      }
-    );
+          return;
+        }
 
-    const url =
-      URL.createObjectURL(blob);
-
-    const a =
-      document.createElement("a");
-
-    a.href = url;
-    a.download =
-      `peserta-maskana-${Date.now()}.csv`;
-
-    document.body.appendChild(a);
-
-    a.click();
-
-    a.remove();
-
-    URL.revokeObjectURL(url);
-  }
-
-  /* =========================================================
-     22. DOWNLOAD KARTU PESERTA
-     ========================================================= */
-
-  function downloadCard(participant) {
-    if (!participant) return;
-
-    /*
-     * Jika aplikasi Anda memiliki fungsi kartu sendiri,
-     * event ini tidak akan mengganggunya.
-     */
-
-    const text = [
-      "KARTU PESERTA MASKANA",
-      "",
-      `Nama       : ${participant.name}`,
-      `ID         : ${participant.id}`,
-      `No. HP     : ${participant.phone || "-"}`,
-      `Desa       : ${participant.village || "-"}`,
-      `Kecamatan  : ${participant.district || "-"}`,
-      `Kabupaten  : ${participant.regency || "-"}`
-    ].join("\n");
-
-    const blob = new Blob(
-      [text],
-      { type: "text/plain;charset=utf-8" }
-    );
-
-    const url =
-      URL.createObjectURL(blob);
-
-    const a =
-      document.createElement("a");
-
-    a.href = url;
-    a.download =
-      `kartu-${participant.id}.txt`;
-
-    document.body.appendChild(a);
-
-    a.click();
-
-    a.remove();
-
-    URL.revokeObjectURL(url);
-  }
-
-  /* =========================================================
-     23. FORM TAMBAH PESERTA
-     ========================================================= */
-
-  function setupParticipantForm() {
-    const form =
-      byId("participantForm");
-
-    if (!form) {
-      console.warn(
-        "participantForm tidak ditemukan."
-      );
-      return;
-    }
-
-    form.addEventListener(
-      "submit",
-      async (event) => {
-        event.preventDefault();
-
-        const getValue = (...ids) => {
-          for (const id of ids) {
-            const el = byId(id);
-
-            if (el) {
-              return String(
-                el.value || ""
-              ).trim();
-            }
+        records.forEach(
+          (a) => {
+            rows.push([
+              p.id,
+              p.name,
+              p.phone,
+              p.village,
+              p.district,
+              p.regency,
+              formatDate(
+                a.time
+              ) +
+                " " +
+                formatTime(
+                  a.time
+                )
+            ]);
           }
-
-          return "";
-        };
-
-        const data = {
-          id: getValue(
-            "participantId",
-            "idPeserta",
-            "pesertaId"
-          ),
-
-          name: getValue(
-            "participantName",
-            "name",
-            "namaPeserta",
-            "nama"
-          ),
-
-          phone: getValue(
-            "participantPhone",
-            "phone",
-            "noHp",
-            "nomorHp"
-          ),
-
-          village: getValue(
-            "participantVillage",
-            "village",
-            "desa"
-          ),
-
-          district: getValue(
-            "participantDistrict",
-            "district",
-            "kecamatan"
-          ),
-
-          regency: getValue(
-            "participantRegency",
-            "regency",
-            "kabupaten"
-          )
-        };
-
-        if (!data.name) {
-          alert(
-            "Nama peserta belum diisi."
-          );
-
-          return;
-        }
-
-        const success =
-          await addParticipant(data);
-
-        if (success) {
-          form.reset();
-
-          alert(
-            "Peserta berhasil ditambahkan."
-          );
-        } else {
-          /*
-           * Jika gagal online, peserta tetap
-           * tersimpan lokal.
-           */
-          alert(
-            "Peserta disimpan di perangkat. " +
-            "Periksa koneksi internet/Supabase."
-          );
-        }
+        );
       }
+    );
+
+    const csv =
+      "\ufeff" +
+      rows
+        .map(
+          (row) =>
+            row
+              .map(csvEscape)
+              .join(",")
+        )
+        .join("\n");
+
+    const blob =
+      new Blob(
+        [csv],
+        {
+          type:
+            "text/csv;charset=utf-8;"
+        }
+      );
+
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
+    const link =
+      document.createElement(
+        "a"
+      );
+
+    link.href = url;
+
+    link.download =
+      `rekap-maskana-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`;
+
+    document.body.appendChild(
+      link
+    );
+
+    link.click();
+
+    link.remove();
+
+    URL.revokeObjectURL(
+      url
     );
   }
 
-  /* =========================================================
-     24. INPUT SCANNER
-     ========================================================= */
+  /* =====================================================
+     TOMBOL EXPORT
+  ===================================================== */
 
-  function setupScanner() {
-    const input =
-      byId("scanInput") ||
-      byId("scanCode") ||
-      byId("qrInput") ||
-      byId("scannerInput");
-
-    if (!input) {
-      console.warn(
-        "Input scanner tidak ditemukan."
+  function setupExport() {
+    $("exportBtn")
+      ?.addEventListener(
+        "click",
+        exportCSV
       );
 
-      return;
-    }
+    $("exportBtn2")
+      ?.addEventListener(
+        "click",
+        exportCSV
+      );
+  }
 
-    input.addEventListener(
-      "keydown",
-      async (event) => {
-        if (event.key !== "Enter") {
-          return;
-        }
+  /* =====================================================
+     WHATSAPP
+  ===================================================== */
 
-        event.preventDefault();
+  function setupWhatsApp() {
+    const button =
+      $("sendWhatsApp");
 
-        const value =
-          input.value.trim();
+    if (!button) return;
 
-        if (!value) return;
-
-        await processScan(value);
-
-        input.value = "";
-
-        setTimeout(() => {
-          input.focus();
-        }, 50);
-      }
-    );
-
-    input.addEventListener(
+    button.addEventListener(
       "click",
       () => {
-        input.focus();
-      }
-    );
-  }
-
-  /* =========================================================
-     25. PENCARIAN
-     ========================================================= */
-
-  function setupSearch() {
-    const inputs = [
-      byId("participantSearch"),
-      byId("searchParticipant"),
-      byId("searchInput")
-    ].filter(Boolean);
-
-    inputs.forEach((input) => {
-      input.addEventListener(
-        "input",
-        () => {
-          renderParticipants();
+        if (!currentParticipant) {
+          return;
         }
-      );
-    });
-  }
 
-  /* =========================================================
-     26. TOMBOL NAVIGASI
-     ========================================================= */
+        let phone =
+          String(
+            currentParticipant.phone ||
+              ""
+          )
+            .replace(
+              /\D/g,
+              ""
+            );
 
-  function setupNavigation() {
-    /*
-     * Semua tombol dengan data-page
-     */
-    $all("[data-page]").forEach(
-      (button) => {
-        button.addEventListener(
-          "click",
-          (event) => {
-            event.preventDefault();
+        if (
+          phone.startsWith(
+            "0"
+          )
+        ) {
+          phone =
+            "62" +
+            phone.substring(
+              1
+            );
+        }
 
-            const page =
-              button.dataset.page;
+        const message =
+          `Kartu Kehadiran MASKANA\n\n` +
+          `Nama: ${currentParticipant.name}\n` +
+          `ID: ${currentParticipant.id}\n` +
+          `Desa: ${currentParticipant.village}\n` +
+          `Kecamatan: ${currentParticipant.district}\n` +
+          `Kabupaten: ${currentParticipant.regency}`;
 
-            if (!page) return;
+        const url =
+          `https://wa.me/${phone}?text=` +
+          encodeURIComponent(
+            message
+          );
 
-            /*
-             * Coba cari elemen target
-             */
-            const target =
-              byId(page) ||
-              document.querySelector(
-                `[data-section="${page}"]`
-              );
-
-            if (target) {
-              $all(
-                ".page, .section, .content-section"
-              ).forEach((section) => {
-                section.classList.remove(
-                  "active"
-                );
-              });
-
-              target.classList.add(
-                "active"
-              );
-
-              try {
-                target.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start"
-                });
-              } catch (_) {}
-            }
-
-            /*
-             * Tandai menu aktif
-             */
-            $all(
-              "[data-page]"
-            ).forEach((item) => {
-              item.classList.toggle(
-                "active",
-                item === button
-              );
-            });
-          }
+        window.open(
+          url,
+          "_blank"
         );
       }
     );
   }
 
-  /* =========================================================
-     27. TOMBOL UMUM
-     ========================================================= */
+  /* =====================================================
+     VILLAGE AUTOCOMPLETE
+  ===================================================== */
 
-  function setupButtons() {
-    /* Tambah peserta */
-    const addButtons = [
-      byId("addParticipant"),
-      byId("btnAddParticipant"),
-      byId("tambahPeserta")
-    ].filter(Boolean);
+  function updateVillageOptions() {
+    const list =
+      $("villageOptions");
 
-    addButtons.forEach((button) => {
-      button.addEventListener(
-        "click",
-        (event) => {
-          event.preventDefault();
+    if (!list) return;
 
-          const form =
-            byId("participantForm");
+    const villages =
+      [
+        ...new Set(
+          participants
+            .map(
+              (p) =>
+                p.village
+            )
+            .filter(Boolean)
+        )
+      ].sort();
 
-          if (form) {
-            show(form);
-
-            const firstInput =
-              form.querySelector(
-                "input, select, textarea"
-              );
-
-            if (firstInput) {
-              firstInput.focus();
-            }
-          }
-        }
-      );
-    });
-
-    /* Export */
-    const exportButtons = [
-      byId("exportCSV"),
-      byId("btnExport"),
-      byId("downloadCSV")
-    ].filter(Boolean);
-
-    exportButtons.forEach((button) => {
-      button.addEventListener(
-        "click",
-        (event) => {
-          event.preventDefault();
-          exportCSV();
-        }
-      );
-    });
-
-    /* Refresh */
-    const refreshButtons = [
-      byId("refreshData"),
-      byId("btnRefresh"),
-      byId("refresh")
-    ].filter(Boolean);
-
-    refreshButtons.forEach((button) => {
-      button.addEventListener(
-        "click",
-        async (event) => {
-          event.preventDefault();
-
-          await loadAllData();
-        }
-      );
-    });
-
-    /* Close */
-    $all(
-      "[data-close], .btn-close, .close-button"
-    ).forEach((button) => {
-      button.addEventListener(
-        "click",
-        (event) => {
-          event.preventDefault();
-
-          const targetId =
-            button.dataset.close;
-
-          if (targetId) {
-            hide(byId(targetId));
-          } else {
-            const parent =
-              button.closest(
-                ".modal, .dialog, .popup"
-              );
-
-            if (parent) hide(parent);
-          }
-        }
-      );
-    });
+    list.innerHTML =
+      villages
+        .map(
+          (village) =>
+            `<option value="${escapeHTML(
+              village
+            )}"></option>`
+        )
+        .join("");
   }
 
-  /* =========================================================
-     28. HANDLE ERROR GLOBAL
-     ========================================================= */
+  function setupVillageAutoFill() {
+    const village =
+      $("villageInput");
 
-  window.addEventListener(
-    "error",
-    (event) => {
-      console.error(
-        "JavaScript error:",
-        event.error || event.message
-      );
-    }
-  );
+    const district =
+      $("districtInput");
 
-  window.addEventListener(
-    "unhandledrejection",
-    (event) => {
-      console.error(
-        "Promise error:",
-        event.reason
-      );
-    }
-  );
+    const regency =
+      $("regencyInput");
 
-  /* =========================================================
-     29. ONLINE / OFFLINE
-     ========================================================= */
+    if (!village) return;
 
-  window.addEventListener(
-    "online",
-    async () => {
-      console.log(
-        "Internet kembali."
-      );
+    village.addEventListener(
+      "input",
+      () => {
+        const value =
+          village.value
+            .trim()
+            .toLowerCase();
 
-      setConnectionStatus(
-        true,
-        "ONLINE"
-      );
+        const found =
+          participants.find(
+            (p) =>
+              String(
+                p.village || ""
+              )
+                .toLowerCase() ===
+              value
+          );
 
-      await loadAllData();
+        if (found) {
+          if (
+            district &&
+            !district.value
+          ) {
+            district.value =
+              found.district ||
+              "";
+          }
 
-      subscribeRealtime();
-    }
-  );
-
-  window.addEventListener(
-    "offline",
-    () => {
-      console.log(
-        "Perangkat offline."
-      );
-
-      setConnectionStatus(
-        false,
-        "OFFLINE"
-      );
-    }
-  );
-
-  /* =========================================================
-     30. FOKUS KEMBALI KE APLIKASI
-     ========================================================= */
-
-  document.addEventListener(
-    "visibilitychange",
-    async () => {
-      if (
-        document.visibilityState ===
-        "visible"
-      ) {
-        /*
-         * Saat HP kembali membuka aplikasi,
-         * ambil data terbaru dari server.
-         */
-        await loadAllData();
+          if (
+            regency &&
+            !regency.value
+          ) {
+            regency.value =
+              found.regency ||
+              "";
+          }
+        }
       }
-    }
-  );
+    );
+  }
 
-  /* =========================================================
-     31. INIT
-     ========================================================= */
+  /* =====================================================
+     RENDER SEMUA
+  ===================================================== */
+
+  function renderAll() {
+    renderDashboard();
+
+    renderParticipants();
+
+    renderAttendance();
+
+    renderRecap();
+
+    updateVillageOptions();
+  }
+
+  /* =====================================================
+     INIT
+  ===================================================== */
 
   async function init() {
     console.log(
-      "================================"
+      "MASKANA APP START"
     );
 
-    console.log(
-      "ABSEN MASKANA DIMULAI"
-    );
+    /*
+     * Ini penting:
+     * navigasi dipasang PALING AWAL.
+     * Jadi walaupun Supabase error,
+     * tombol tetap bekerja.
+     */
+    setupNavigation();
 
-    console.log(
-      "Supabase:",
-      db ? "TERHUBUNG" : "TIDAK TERHUBUNG"
-    );
+    setupParticipantModal();
 
-    console.log(
-      "================================"
-    );
+    setupParticipantForm();
 
-    updateClock();
+    setupScanner();
+
+    setupAttendanceSearch();
+
+    setupExport();
+
+    setupDownloadCard();
+
+    setupQRModal();
+
+    setupWhatsApp();
+
+    setupVillageAutoFill();
+
+    updateDate();
 
     setInterval(
-      updateClock,
-      1000
+      updateDate,
+      60000
     );
 
     /*
-     * Pasang event handler SEBELUM load data.
-     *
-     * Ini penting supaya kalau Supabase error,
-     * tombol aplikasi tetap dapat digunakan.
+     * Load lokal
      */
-    setupParticipantForm();
-    setupScanner();
-    setupSearch();
-    setupNavigation();
-    setupButtons();
+    loadLocal();
+
+    renderAll();
 
     /*
-     * Render data lokal dulu.
+     * Load online
      */
-    loadLocalData();
+    if (supabase) {
+      await loadOnline();
 
-    renderParticipants();
-    renderAttendance();
-    renderDashboard();
-
-    /*
-     * Baru ambil data online.
-     */
-    if (db) {
-      await loadAllData();
-      subscribeRealtime();
+      setupRealtime();
     } else {
-      setConnectionStatus(
-        false,
-        "MODE LOKAL"
+      console.warn(
+        "Aplikasi berjalan tanpa Supabase."
       );
     }
 
     /*
-     * Fokus scanner jika tersedia.
+     * Mulai dari dashboard
      */
-    const scanner =
-      byId("scanInput") ||
-      byId("scanCode") ||
-      byId("qrInput") ||
-      byId("scannerInput");
-
-    if (scanner) {
-      setTimeout(() => {
-        try {
-          scanner.focus();
-        } catch (_) {}
-      }, 300);
-    }
+    openTab(
+      "dashboard"
+    );
 
     console.log(
-      "ABSEN MASKANA SIAP"
+      "MASKANA APP READY"
     );
   }
 
-  /* =========================================================
-     32. JALANKAN SETELAH HTML SELESAI
-     ========================================================= */
+  /* =====================================================
+     JALANKAN
+  ===================================================== */
 
   if (
     document.readyState ===
@@ -1715,32 +2323,20 @@
     init();
   }
 
-  /* =========================================================
-     33. API GLOBAL
-     ========================================================= */
+  /* =====================================================
+     API GLOBAL
+  ===================================================== */
 
   window.Maskana = {
-    db,
+    refresh: loadOnline,
 
-    getParticipants() {
-      return participants;
-    },
+    scan: processScan,
 
-    getAttendance() {
-      return attendance;
-    },
+    getParticipants:
+      () => participants,
 
-    addParticipant,
-
-    deleteParticipant,
-
-    processScan,
-
-    recordAttendance,
-
-    refresh: loadAllData,
-
-    exportCSV
+    getAttendance:
+      () => attendance
   };
 
 })();
