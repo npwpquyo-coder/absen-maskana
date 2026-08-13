@@ -1,2360 +1,3029 @@
-(() => {
-  "use strict";
+/* =========================================================
+   ABSEN MASKANA
+   APP.JS - VERSI ONLINE / MULTI HP / MULTI LAPTOP
+========================================================= */
 
-  /* =====================================================
-     KONFIGURASI
-  ================================================ */
+const $ = (selector) => document.querySelector(selector);
 
-  /* =====================================================
-   SUPABASE ONLINE - ABSEN MASKANA
-===================================================== */
-
-const SUPABASE_URL =
-  window.MASKANA_SUPABASE_URL || "";
-
-const SUPABASE_KEY =
-  window.MASKANA_SUPABASE_KEY || "";
+const storeKey = "hadirkita-maskana-v1";
 
 let supabase = null;
 
-function initSupabase() {
-  if (!window.supabase) {
-    console.error("Library Supabase belum tersedia.");
-    return false;
+let data = {
+  participants: [],
+  attendance: []
+};
+
+let activeCardParticipant = null;
+let addressBook = JSON.parse(
+  localStorage.getItem("hadirkita-address-book") || "{}"
+);
+
+let realtimeChannel = null;
+let loadingData = false;
+let initialized = false;
+
+
+/* =========================================================
+   KONFIGURASI SUPABASE
+========================================================= */
+
+const SUPABASE_URL =
+  window.MASKANA_SUPABASE_URL ||
+  "https://kjhzkzmswrzdwsamaejy.supabase.co";
+
+const SUPABASE_KEY =
+  window.MASKANA_SUPABASE_KEY ||
+  "sb_publishable_26axc3A7U46FgNJ-CXXfYQ_1qtGe0sR";
+
+
+/* =========================================================
+   LOAD SUPABASE
+========================================================= */
+
+async function ensureSupabase() {
+
+  if (window.supabase) {
+
+    try {
+
+      supabase = window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_KEY
+      );
+
+      console.log("✅ Supabase siap.");
+
+      return true;
+
+    } catch (error) {
+
+      console.error(
+        "Gagal membuat koneksi Supabase:",
+        error
+      );
+
+      return false;
+    }
   }
 
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.error("Konfigurasi Supabase belum tersedia.");
-    return false;
-  }
 
   try {
-    supabase = window.supabase.createClient(
-      SUPABASE_URL,
-      SUPABASE_KEY
+
+    await new Promise((resolve, reject) => {
+
+      const existing =
+        document.querySelector(
+          "script[data-maskana-supabase]"
+        );
+
+      if (existing) {
+
+        existing.addEventListener(
+          "load",
+          resolve,
+          { once: true }
+        );
+
+        existing.addEventListener(
+          "error",
+          reject,
+          { once: true }
+        );
+
+        return;
+      }
+
+
+      const script =
+        document.createElement("script");
+
+      script.src =
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+
+      script.dataset.maskanaSupabase =
+        "true";
+
+      script.onload = resolve;
+
+      script.onerror = () =>
+        reject(
+          new Error(
+            "Library Supabase gagal dimuat."
+          )
+        );
+
+      document.head.appendChild(script);
+    });
+
+
+    if (!window.supabase) {
+
+      throw new Error(
+        "Library Supabase tidak tersedia."
+      );
+    }
+
+
+    supabase =
+      window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_KEY
+      );
+
+
+    console.log(
+      "✅ Library Supabase berhasil dimuat."
     );
 
-    console.log("✅ Supabase berhasil terhubung.");
-
     return true;
+
+
   } catch (error) {
+
     console.error(
-      "❌ Supabase gagal dibuat:",
+      "❌ Supabase gagal diinisialisasi:",
       error
     );
 
     supabase = null;
 
+    toast(
+      "Koneksi database online belum siap."
+    );
+
     return false;
   }
+}
 
 
-  /* =====================================================
-     DATA
-  ===================================================== */
+/* =========================================================
+   LOCAL STORAGE
+========================================================= */
 
-  let participants = [];
-  let attendance = [];
+function localBackup() {
 
-  let currentParticipant = null;
+  try {
 
-  const PARTICIPANT_TABLE =
-    "participants";
-
-  const ATTENDANCE_TABLE =
-    "attendance";
-
-  /* =====================================================
-     HELPER
-  ===================================================== */
-
-  function $(id) {
-    return document.getElementById(id);
-  }
-
-  function escapeHTML(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  function formatTime(value) {
-    const date = new Date(value);
-
-    if (isNaN(date.getTime())) {
-      return "-";
-    }
-
-    return date.toLocaleTimeString(
-      "id-ID",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false
-      }
+    return JSON.parse(
+      localStorage.getItem(storeKey) ||
+      '{"participants":[],"attendance":[]}'
     );
+
+  } catch {
+
+    return {
+      participants: [],
+      attendance: []
+    };
   }
+}
 
-  function formatDate(value) {
-    const date = new Date(value);
 
-    if (isNaN(date.getTime())) {
-      return "-";
+function cacheData() {
+
+  localStorage.setItem(
+    storeKey,
+    JSON.stringify(data)
+  );
+}
+
+
+/* =========================================================
+   UTILITAS
+========================================================= */
+
+const esc = (value) => {
+
+  return String(value ?? "")
+    .replace(
+      /[&<>"']/g,
+      (char) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#039;"
+        })[char]
+    );
+};
+
+
+const initials = (name) => {
+
+  return String(name || "")
+    .split(" ")
+    .map((x) => x[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+};
+
+
+const fmtTime = (iso) => {
+
+  return new Intl.DateTimeFormat(
+    "id-ID",
+    {
+      hour: "2-digit",
+      minute: "2-digit"
     }
+  ).format(new Date(iso));
+};
 
-    return date.toLocaleDateString(
-      "id-ID",
+
+function toast(message) {
+
+  const element = $("#toast");
+
+  if (!element) return;
+
+  element.textContent = message;
+
+  element.classList.add("show");
+
+  setTimeout(() => {
+
+    element.classList.remove("show");
+
+  }, 2800);
+}
+
+
+/* =========================================================
+   TANGGAL
+========================================================= */
+
+function updateDate() {
+
+  const today =
+    new Intl.DateTimeFormat(
+      "id-ID-u-ca-islamic-umalqura",
       {
-        day: "2-digit",
-        month: "2-digit",
+        weekday: "long",
+        day: "numeric",
+        month: "long",
         year: "numeric"
       }
-    );
+    )
+      .format(new Date())
+      .toUpperCase();
+
+
+  if ($("#today")) {
+
+    $("#today").textContent =
+      `${today} H`;
   }
 
-  function generateId() {
-    return (
-      "MKN-" +
-      Date.now().toString(36).toUpperCase() +
-      "-" +
-      Math.random()
-        .toString(36)
-        .substring(2, 7)
-        .toUpperCase()
-    );
+
+  if ($("#eventDate")) {
+
+    $("#eventDate").textContent =
+      `${today} H · Pengajian rutin alumni`;
+  }
+}
+
+
+/* =========================================================
+   ALAMAT DESA
+========================================================= */
+
+function addressKey(village) {
+
+  return String(village || "")
+    .trim()
+    .toLocaleLowerCase("id-ID")
+    .replace(/\s+/g, " ");
+}
+
+
+function rememberAddress(participant) {
+
+  if (
+    !participant.village ||
+    !participant.district ||
+    !participant.regency
+  ) {
+
+    return;
   }
 
-  /* =====================================================
-     TOAST
-  ===================================================== */
 
-  function toast(message) {
-    const el = $("toast");
+  addressBook[
+    addressKey(participant.village)
+  ] = {
 
-    if (!el) {
-      alert(message);
-      return;
-    }
+    village: participant.village,
 
-    el.textContent = message;
-    el.classList.add("show");
+    district: participant.district,
 
-    clearTimeout(window.maskanaToastTimer);
+    regency: participant.regency
+  };
 
-    window.maskanaToastTimer =
-      setTimeout(() => {
-        el.classList.remove("show");
-      }, 3000);
-  }
 
-  /* =====================================================
-     NAVIGASI TAB
-  ===================================================== */
+  localStorage.setItem(
+    "hadirkita-address-book",
+    JSON.stringify(addressBook)
+  );
+}
 
-  function openTab(tabName) {
-    const tabs =
-      document.querySelectorAll(".tab");
 
-    const navItems =
-      document.querySelectorAll(
-        ".nav-item"
-      );
+function renderVillageOptions() {
 
-    tabs.forEach((tab) => {
-      tab.classList.toggle(
-        "active",
-        tab.id === tabName
-      );
-    });
+  const list =
+    $("#villageOptions");
 
-    navItems.forEach((item) => {
-      item.classList.toggle(
-        "active",
-        item.dataset.tab === tabName
-      );
-    });
+  if (!list) return;
 
-    const titles = {
-      dashboard:
-        "Selamat datang 👋",
 
-      scan:
-        "Scan Kehadiran",
+  list.innerHTML =
+    Object.values(addressBook)
 
-      peserta:
-        "Data Peserta",
-
-      rekap:
-        "Rekap Kehadiran Desa"
-    };
-
-    $("pageTitle").textContent =
-      titles[tabName] ||
-      "Selamat datang 👋";
-
-    /*
-     * Jika masuk halaman scan,
-     * fokuskan scanner.
-     */
-    if (tabName === "scan") {
-      setTimeout(() => {
-        const input =
-          $("scanInput");
-
-        if (input) {
-          input.focus();
-        }
-      }, 100);
-    }
-  }
-
-  function setupNavigation() {
-    /*
-     * MENU KIRI
-     */
-    document
-      .querySelectorAll(".nav-item")
-      .forEach((button) => {
-        button.addEventListener(
-          "click",
-          () => {
-            openTab(
-              button.dataset.tab
-            );
-          }
-        );
-      });
-
-    /*
-     * TOMBOL "Mulai scan"
-     */
-    document
-      .querySelectorAll("[data-go]")
-      .forEach((button) => {
-        button.addEventListener(
-          "click",
-          () => {
-            openTab(
-              button.dataset.go
-            );
-          }
-        );
-      });
-  }
-
-  /* =====================================================
-     TANGGAL
-  ===================================================== */
-
-  function updateDate() {
-    const now = new Date();
-
-    $("today").textContent =
-      now
-        .toLocaleDateString(
-          "id-ID",
-          {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-            year: "numeric"
-          }
-        )
-        .toUpperCase();
-
-    $("eventDate").textContent =
-      now.toLocaleDateString(
-        "id-ID",
-        {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          year: "numeric"
-        }
-      );
-  }
-
-  /* =====================================================
-     LOCAL STORAGE
-  ===================================================== */
-
-  function saveLocal() {
-    localStorage.setItem(
-      "maskana_participants",
-      JSON.stringify(participants)
-    );
-
-    localStorage.setItem(
-      "maskana_attendance",
-      JSON.stringify(attendance)
-    );
-  }
-
-  function loadLocal() {
-    try {
-      participants =
-        JSON.parse(
-          localStorage.getItem(
-            "maskana_participants"
-          ) || "[]"
-        );
-
-      attendance =
-        JSON.parse(
-          localStorage.getItem(
-            "maskana_attendance"
-          ) || "[]"
-        );
-
-      if (!Array.isArray(participants)) {
-        participants = [];
-      }
-
-      if (!Array.isArray(attendance)) {
-        attendance = [];
-      }
-    } catch (error) {
-      console.error(error);
-
-      participants = [];
-      attendance = [];
-    }
-  }
-
-  /* =====================================================
-     SUPABASE LOAD PESERTA
-  ===================================================== */
-
-  async function loadParticipants() {
-    if (!supabase) {
-      return;
-    }
-
-    try {
-      const result =
-        await supabase
-          .from(PARTICIPANT_TABLE)
-          .select("*")
-          .order("name", {
-            ascending: true
-          });
-
-      if (result.error) {
-        throw result.error;
-      }
-
-      participants =
-        result.data || [];
-
-      saveLocal();
-
-      renderAll();
-
-      console.log(
-        "Peserta berhasil dimuat:",
-        participants.length
-      );
-    } catch (error) {
-      console.error(
-        "Gagal mengambil peserta:",
-        error
-      );
-    }
-  }
-
-  /* =====================================================
-     SUPABASE LOAD KEHADIRAN
-  ===================================================== */
-
-  async function loadAttendance() {
-    if (!supabase) {
-      return;
-    }
-
-    try {
-      const result =
-        await supabase
-          .from(ATTENDANCE_TABLE)
-          .select("*")
-          .order("time", {
-            ascending: false
-          });
-
-      if (result.error) {
-        throw result.error;
-      }
-
-      attendance =
-        result.data || [];
-
-      saveLocal();
-
-      renderAll();
-
-      console.log(
-        "Kehadiran berhasil dimuat:",
-        attendance.length
-      );
-    } catch (error) {
-      console.error(
-        "Gagal mengambil kehadiran:",
-        error
-      );
-    }
-  }
-
-  /* =====================================================
-     LOAD ONLINE
-  ===================================================== */
-
-  async function loadOnline() {
-    if (!supabase) {
-      console.warn(
-        "Supabase belum terhubung."
-      );
-
-      return;
-    }
-
-    await Promise.all([
-      loadParticipants(),
-      loadAttendance()
-    ]);
-  }
-
-  /* =====================================================
-     REALTIME
-  ===================================================== */
-
-  function setupRealtime() {
-    if (!supabase) {
-      return;
-    }
-
-    try {
-      supabase
-        .channel(
-          "maskana-realtime"
-        )
-
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: PARTICIPANT_TABLE
-          },
-          async () => {
-            console.log(
-              "Data peserta berubah."
-            );
-
-            await loadParticipants();
-          }
-        )
-
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: ATTENDANCE_TABLE
-          },
-          async () => {
-            console.log(
-              "Data kehadiran berubah."
-            );
-
-            await loadAttendance();
-          }
-        )
-
-        .subscribe();
-    } catch (error) {
-      console.error(
-        "Realtime error:",
-        error
-      );
-    }
-  }
-
-  /* =====================================================
-     RENDER DASHBOARD
-  ===================================================== */
-
-  function renderDashboard() {
-    const today =
-      new Date().toDateString();
-
-    const todayAttendance =
-      attendance.filter((item) => {
-        return (
-          new Date(item.time)
-            .toDateString() === today
-        );
-      });
-
-    $("totalPeserta").textContent =
-      participants.length;
-
-    $("totalHadir").textContent =
-      todayAttendance.length;
-
-    const rate =
-      participants.length
-        ? Math.round(
-            todayAttendance.length /
-              participants.length *
-              100
+      .sort(
+        (a, b) =>
+          a.village.localeCompare(
+            b.village,
+            "id"
           )
-        : 0;
+      )
 
-    $("presentRate").textContent =
-      `${rate}% dari peserta`;
+      .map(
+        (item) =>
+          `<option value="${esc(
+            item.village
+          )}">${esc(
+            item.district
+          )}, ${esc(
+            item.regency
+          )}</option>`
+      )
 
-    const villages =
-      new Set(
-        participants
-          .map((p) => p.village)
-          .filter(Boolean)
-      );
+      .join("");
+}
 
-    const hadirVillages =
-      new Set(
-        todayAttendance
-          .map((a) => {
-            const p =
-              findParticipant(
-                a.participant_id
-              );
 
-            return p?.village;
-          })
-          .filter(Boolean)
-      );
+function autoFillAddress() {
 
-    $("totalDesa").textContent =
-      hadirVillages.size;
+  const village =
+    $("#villageInput");
 
-    $("villageRate").textContent =
-      `Dari ${villages.size} desa terdaftar`;
+  const district =
+    $("#districtInput");
 
-    if (
-      todayAttendance.length
-    ) {
-      const latest =
-        todayAttendance[0];
+  const regency =
+    $("#regencyInput");
 
-      const p =
-        findParticipant(
-          latest.participant_id
-        );
 
-      if (p) {
-        $("lastScan").textContent =
-          p.name;
+  if (!village) return;
 
-        $("lastTime").textContent =
-          formatTime(latest.time);
-      }
-    } else {
-      $("lastScan").textContent =
-        "—";
 
-      $("lastTime").textContent =
-        "Belum ada kehadiran";
-    }
+  const address =
+    addressBook[
+      addressKey(village.value)
+    ];
 
-    renderRecent();
-    renderVillageBars();
+
+  if (!address) return;
+
+
+  if (district) {
+
+    district.value =
+      address.district;
   }
 
-  /* =====================================================
-     RECENT
-  ===================================================== */
 
-  function renderRecent() {
-    const container =
-      $("recentList");
+  if (regency) {
 
-    if (!container) return;
+    regency.value =
+      address.regency;
+  }
+}
 
-    const today =
-      new Date().toDateString();
 
-    const items =
-      attendance
-        .filter(
-          (a) =>
-            new Date(a.time)
-              .toDateString() === today
+/* =========================================================
+   DATA
+========================================================= */
+
+function uniqueVillages() {
+
+  return [
+    ...new Map(
+      data.participants.map(
+        (p) => [
+          `${p.village}|${p.district}|${p.regency}`,
+          p
+        ]
+      )
+    ).values()
+  ];
+}
+
+
+function attendees() {
+
+  return data.attendance
+
+    .map(
+      (a) => ({
+        ...a,
+
+        p:
+          data.participants.find(
+            (p) => p.id === a.id
+          )
+      })
+    )
+
+    .filter((a) => a.p);
+}
+
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
+function renderDashboard() {
+
+  const present =
+    attendees();
+
+  const villages =
+    uniqueVillages();
+
+
+  const activeVillages =
+    [
+      ...new Set(
+        present.map(
+          (x) => x.p.village
         )
-        .slice(0, 8);
+      )
+    ];
 
-    if (!items.length) {
-      container.classList.add(
-        "empty"
-      );
 
-      container.innerHTML =
-        "Belum ada peserta yang hadir.";
+  if ($("#totalPeserta")) {
 
-      return;
-    }
+    $("#totalPeserta").textContent =
+      data.participants.length;
+  }
 
-    container.classList.remove(
-      "empty"
-    );
 
-    container.innerHTML =
-      items
-        .map((a) => {
-          const p =
-            findParticipant(
-              a.participant_id
-            );
+  if ($("#totalHadir")) {
 
-          if (!p) return "";
+    $("#totalHadir").textContent =
+      present.length;
+  }
 
-          return `
-            <div class="recent-item">
-              <div class="recent-avatar">
-                ${escapeHTML(
-                  p.name
-                    .substring(0, 2)
-                    .toUpperCase()
-                )}
-              </div>
+
+  if ($("#totalDesa")) {
+
+    $("#totalDesa").textContent =
+      activeVillages.length;
+  }
+
+
+  if ($("#presentRate")) {
+
+    $("#presentRate").textContent =
+      data.participants.length
+
+        ? `${Math.round(
+            present.length /
+              data.participants.length *
+              100
+          )}% dari peserta`
+
+        : "0% dari peserta";
+  }
+
+
+  if ($("#villageRate")) {
+
+    $("#villageRate").textContent =
+      `Dari ${villages.length} desa terdaftar`;
+  }
+
+
+  const last =
+    present[0];
+
+
+  if ($("#lastScan")) {
+
+    $("#lastScan").textContent =
+      last
+        ? last.p.name
+        : "—";
+  }
+
+
+  if ($("#lastTime")) {
+
+    $("#lastTime").textContent =
+      last
+
+        ? `Pukul ${fmtTime(
+            last.time
+          )}`
+
+        : "Belum ada kehadiran";
+  }
+
+
+  if ($("#recentList")) {
+
+    $("#recentList").className =
+      "recent-list" +
+      (!present.length
+        ? " empty"
+        : "");
+
+
+    $("#recentList").innerHTML =
+
+      present
+        .slice(0, 4)
+
+        .map(
+          (a) =>
+
+            `<div class="recent">
+
+              <span class="avatar">
+                ${initials(a.p.name)}
+              </span>
 
               <div>
                 <strong>
-                  ${escapeHTML(p.name)}
+                  ${esc(a.p.name)}
                 </strong>
 
-                <small>
-                  ${escapeHTML(
-                    p.village || "-"
-                  )}
-                </small>
+                <p>
+                  ${esc(a.p.village)},
+                  ${esc(a.p.district)}
+                </p>
               </div>
 
               <time>
-                ${formatTime(a.time)}
+                ${fmtTime(a.time)}
               </time>
-            </div>
-          `;
-        })
-        .join("");
+
+            </div>`
+        )
+
+        .join("") ||
+
+      "Belum ada peserta yang hadir.";
   }
 
-  /* =====================================================
-     VILLAGE BAR
-  ===================================================== */
 
-  function renderVillageBars() {
-    const container =
-      $("villageBars");
+  const bars =
+    villages
 
-    if (!container) return;
+      .map((v) => {
 
-    const map = {};
-
-    participants.forEach((p) => {
-      const village =
-        p.village || "Tidak diketahui";
-
-      if (!map[village]) {
-        map[village] = {
-          total: 0,
-          hadir: 0
-        };
-      }
-
-      map[village].total++;
-    });
-
-    const today =
-      new Date().toDateString();
-
-    attendance
-      .filter(
-        (a) =>
-          new Date(a.time)
-            .toDateString() === today
-      )
-      .forEach((a) => {
-        const p =
-          findParticipant(
-            a.participant_id
+        const participants =
+          data.participants.filter(
+            (p) =>
+              p.village ===
+              v.village
           );
 
-        if (!p) return;
 
-        const village =
-          p.village ||
-          "Tidak diketahui";
+        const hadir =
+          participants.filter(
+            (p) =>
+              present.some(
+                (a) =>
+                  a.p.id === p.id
+              )
+          ).length;
 
-        if (!map[village]) {
-          map[village] = {
-            total: 0,
-            hadir: 0
-          };
-        }
 
-        map[village].hadir++;
-      });
+        const total =
+          participants.length;
 
-    const entries =
-      Object.entries(map)
-        .sort(
-          (a, b) =>
-            b[1].hadir -
-            a[1].hadir
-        )
-        .slice(0, 8);
 
-    if (!entries.length) {
-      container.classList.add(
-        "empty"
-      );
+        return `
 
-      container.innerHTML =
-        "Belum ada data kehadiran.";
+          <div class="bar-row">
 
-      return;
-    }
+            <div class="bar-head">
 
-    container.classList.remove(
-      "empty"
+              <b>
+                ${esc(v.village)}
+              </b>
+
+              <span>
+                ${hadir}/${total} hadir
+              </span>
+
+            </div>
+
+            <div class="bar">
+
+              <span
+                style="width:${
+                  total
+                    ? hadir / total * 100
+                    : 0
+                }%"
+              ></span>
+
+            </div>
+
+          </div>
+
+        `;
+      })
+
+      .join("");
+
+
+  if ($("#villageBars")) {
+
+    $("#villageBars").className =
+      "village-bars" +
+      (!bars ? " empty" : "");
+
+
+    $("#villageBars").innerHTML =
+      bars ||
+      "Belum ada data kehadiran.";
+  }
+}
+
+
+/* =========================================================
+   PESERTA
+========================================================= */
+
+function renderParticipants() {
+
+  const search =
+    $("#participantSearch");
+
+
+  const term =
+    search
+      ? search.value
+          .toLowerCase()
+      : "";
+
+
+  const participants =
+    data.participants.filter(
+      (p) =>
+        `${p.name} ${p.village} ${p.phone}`
+          .toLowerCase()
+          .includes(term)
     );
 
-    container.innerHTML =
-      entries
-        .map(([village, data]) => {
-          const percentage =
-            data.total
-              ? Math.round(
-                  data.hadir /
-                    data.total *
-                    100
-                )
-              : 0;
 
-          return `
-            <div class="village-row">
-              <div class="village-row-head">
-                <span>
-                  ${escapeHTML(village)}
-                </span>
+  if ($("#participantCount")) {
 
-                <strong>
-                  ${data.hadir}/${data.total}
-                </strong>
-              </div>
+    $("#participantCount").textContent =
+      `${data.participants.length} peserta terdaftar`;
+  }
 
-              <div class="bar">
-                <span
-                  style="width:${percentage}%"
-                ></span>
-              </div>
-            </div>
-          `;
-        })
+
+  if (!$("#participantRows"))
+    return;
+
+
+  $("#participantRows").innerHTML =
+
+    participants.length
+
+      ? participants
+          .map(
+            (p) =>
+
+              `<tr>
+
+                <td>
+
+                  <strong>
+                    ${esc(p.name)}
+                  </strong>
+
+                  <small>
+                    ID: ${esc(p.id)}
+                  </small>
+
+                </td>
+
+                <td>
+
+                  ${esc(p.village)}
+
+                  <small>
+                    ${esc(p.district)},
+                    ${esc(p.regency)}
+                  </small>
+
+                </td>
+
+                <td>
+                  ${esc(p.phone)}
+                </td>
+
+                <td>
+
+                  <button
+                    class="qr-action"
+                    data-qr="${esc(p.id)}"
+                  >
+                    Lihat QR
+                  </button>
+
+                </td>
+
+                <td>
+
+                  <button
+                    class="delete-action"
+                    data-delete="${esc(p.id)}"
+                  >
+                    Hapus
+                  </button>
+
+                </td>
+
+              </tr>`
+          )
+          .join("")
+
+      : emptyRow(
+          5,
+          "Belum ada peserta. Tambahkan peserta pertama Anda."
+        );
+}
+
+
+/* =========================================================
+   KEHADIRAN
+========================================================= */
+
+function renderAttendance() {
+
+  const search =
+    $("#attendanceSearch");
+
+
+  const term =
+    search
+      ? search.value
+          .toLowerCase()
+      : "";
+
+
+  const list =
+    attendees().filter(
+      (a) =>
+        `${a.p.name} ${a.p.village}`
+          .toLowerCase()
+          .includes(term)
+    );
+
+
+  if ($("#attendanceCount")) {
+
+    $("#attendanceCount").textContent =
+      `${attendees().length} peserta tercatat hadir`;
+  }
+
+
+  if (!$("#attendanceRows"))
+    return;
+
+
+  $("#attendanceRows").innerHTML =
+
+    list.length
+
+      ? list
+
+          .map(
+            (a) =>
+
+              `<tr>
+
+                <td>
+
+                  <strong>
+                    ${esc(a.p.name)}
+                  </strong>
+
+                  <small>
+                    ${esc(a.p.phone)}
+                  </small>
+
+                </td>
+
+                <td>
+
+                  ${esc(a.p.village)}
+
+                  <small>
+                    ${esc(a.p.district)},
+                    ${esc(a.p.regency)}
+                  </small>
+
+                </td>
+
+                <td>
+                  ${fmtTime(a.time)}
+                </td>
+
+                <td>
+
+                  <span class="status">
+                    ✓ HADIR
+                  </span>
+
+                </td>
+
+              </tr>`
+          )
+
+          .join("")
+
+      : emptyRow(
+          4,
+          "Belum ada kehadiran yang tercatat."
+        );
+}
+
+
+/* =========================================================
+   REKAP
+========================================================= */
+
+function renderRecap() {
+
+  const villages =
+    uniqueVillages();
+
+  const present =
+    attendees();
+
+
+  const summary = [
+
+    [
+      "Total desa terdaftar",
+      villages.length
+    ],
+
+    [
+      "Desa sudah hadir",
+      new Set(
+        present.map(
+          (x) => x.p.village
+        )
+      ).size
+    ],
+
+    [
+      "Total kehadiran",
+      present.length
+    ]
+
+  ];
+
+
+  if ($("#recapSummary")) {
+
+    $("#recapSummary").innerHTML =
+
+      summary
+
+        .map(
+          (item) =>
+
+            `<div>
+
+              <p>
+                ${item[0]}
+              </p>
+
+              <strong>
+                ${item[1]}
+              </strong>
+
+            </div>`
+        )
+
         .join("");
   }
 
-  /* =====================================================
-     RENDER PESERTA
-  ===================================================== */
 
-  function renderParticipants() {
-    const tbody =
-      $("participantRows");
+  if (!$("#recapRows"))
+    return;
 
-    if (!tbody) return;
 
-    const search =
-      (
-        $("participantSearch")
-          ?.value || ""
-      )
-        .toLowerCase()
-        .trim();
+  $("#recapRows").innerHTML =
 
-    const filtered =
-      participants.filter(
-        (p) => {
-          const text =
-            [
-              p.name,
-              p.phone,
-              p.village,
-              p.district,
-              p.regency,
-              p.id
-            ]
-              .join(" ")
-              .toLowerCase();
+    villages.length
 
-          return text.includes(
-            search
-          );
-        }
+      ? villages
+
+          .map((v) => {
+
+            const participants =
+              data.participants.filter(
+                (p) =>
+                  p.village ===
+                  v.village
+              );
+
+
+            const hadir =
+              participants.filter(
+                (p) =>
+                  present.some(
+                    (a) =>
+                      a.p.id === p.id
+                  )
+              ).length;
+
+
+            const total =
+              participants.length;
+
+
+            return `
+
+              <tr>
+
+                <td>
+                  <strong>
+                    ${esc(v.village)}
+                  </strong>
+                </td>
+
+                <td>
+                  ${esc(v.district)}
+                </td>
+
+                <td>
+                  ${esc(v.regency)}
+                </td>
+
+                <td>
+                  ${total} peserta
+                </td>
+
+                <td>
+                  <strong>
+                    ${hadir} hadir
+                  </strong>
+                </td>
+
+                <td>
+
+                  <span class="percent">
+                    ${
+                      total
+                        ? Math.round(
+                            hadir /
+                              total *
+                              100
+                          )
+                        : 0
+                    }%
+                  </span>
+
+                </td>
+
+              </tr>
+
+            `;
+          })
+
+          .join("")
+
+      : emptyRow(
+          6,
+          "Belum ada data peserta."
+        );
+}
+
+
+function emptyRow(
+  columns,
+  text
+) {
+
+  return `
+
+    <tr>
+
+      <td
+        colspan="${columns}"
+        style="
+          text-align:center;
+          padding:35px;
+          color:#8b9696
+        "
+      >
+
+        ${text}
+
+      </td>
+
+    </tr>
+
+  `;
+}
+
+
+/* =========================================================
+   RENDER SEMUA
+========================================================= */
+
+function render() {
+
+  renderDashboard();
+
+  renderParticipants();
+
+  renderAttendance();
+
+  renderRecap();
+
+  renderVillageOptions();
+}
+
+
+/* =========================================================
+   LOAD DATA DARI SUPABASE
+========================================================= */
+
+async function loadRemoteData() {
+
+  if (!supabase) {
+
+    console.warn(
+      "Supabase belum terhubung."
+    );
+
+    return;
+  }
+
+
+  if (loadingData)
+    return;
+
+
+  loadingData = true;
+
+
+  const localBeforeRemote =
+    localBackup();
+
+
+  try {
+
+    const [
+
+      {
+        data: participants,
+        error: participantError
+      },
+
+      {
+        data: attendance,
+        error: attendanceError
+      }
+
+    ] = await Promise.all([
+
+      supabase
+
+        .from("participants")
+
+        .select("*")
+
+        .order(
+          "created_at",
+          {
+            ascending: false
+          }
+        ),
+
+      supabase
+
+        .from("attendance")
+
+        .select(
+          "participant_id,time"
+        )
+
+        .order(
+          "time",
+          {
+            ascending: false
+          }
+        )
+
+    ]);
+
+
+    if (participantError)
+      throw participantError;
+
+
+    if (attendanceError)
+      throw attendanceError;
+
+
+    data.participants =
+      (participants || [])
+        .map(
+          (p) => ({
+
+            id: p.id,
+
+            name: p.name,
+
+            phone:
+              p.phone || "",
+
+            village:
+              p.village || "",
+
+            district:
+              p.district || "",
+
+            regency:
+              p.regency || ""
+
+          })
+        );
+
+
+    data.attendance =
+      (attendance || [])
+        .map(
+          (a) => ({
+
+            id:
+              a.participant_id,
+
+            time:
+              a.time
+
+          })
+        );
+
+
+    data.participants
+      .forEach(
+        rememberAddress
       );
 
-    $("participantCount").textContent =
-      `${participants.length} peserta terdaftar`;
 
-    if (!filtered.length) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="5"
-              style="text-align:center;padding:30px">
-            Belum ada data peserta.
-          </td>
-        </tr>
-      `;
+    render();
 
-      return;
+
+    if (
+      !initialized
+    ) {
+
+      initialized = true;
+
+
+      if (
+        data.participants.length === 0 &&
+        localBeforeRemote
+          .participants.length > 0
+      ) {
+
+        await migrateLocalData(
+          localBeforeRemote
+        );
+
+        return;
+      }
     }
 
-    tbody.innerHTML =
-      filtered
-        .map(
-          (p) => `
-            <tr>
-              <td>
-                <strong>
-                  ${escapeHTML(p.name)}
-                </strong>
-                <small>
-                  ${escapeHTML(p.id)}
-                </small>
-              </td>
 
-              <td>
-                ${escapeHTML(
-                  [
-                    p.village,
-                    p.district,
-                    p.regency
-                  ]
-                    .filter(Boolean)
-                    .join(", ")
-                )}
-              </td>
+    cacheData();
 
-              <td>
-                ${escapeHTML(
-                  p.phone || "-"
-                )}
-              </td>
 
-              <td>
-                <button
-                  class="text-button qr-button"
-                  data-id="${escapeHTML(p.id)}"
-                >
-                  Lihat QR
-                </button>
-              </td>
+    console.log(
+      "✅ Data Supabase berhasil dimuat.",
+      data
+    );
 
-              <td>
-                <button
-                  class="text-button delete-button"
-                  data-id="${escapeHTML(p.id)}"
-                >
-                  Hapus
-                </button>
-              </td>
-            </tr>
-          `
-        )
-        .join("");
 
-    /*
-     * Tombol QR
-     */
-    tbody
-      .querySelectorAll(
-        ".qr-button"
+  } catch (error) {
+
+    console.error(
+      "Supabase load error:",
+      error
+    );
+
+
+    if (!initialized) {
+
+      data =
+        localBeforeRemote;
+
+
+      data.participants
+        .forEach(
+          rememberAddress
+        );
+
+
+      render();
+
+
+      toast(
+        "Database online belum siap. Periksa Supabase."
+      );
+
+
+      initialized = true;
+    }
+
+
+  } finally {
+
+    loadingData = false;
+  }
+}
+
+
+/* =========================================================
+   MIGRASI DATA LAMA
+========================================================= */
+
+async function migrateLocalData(
+  local
+) {
+
+  try {
+
+    if (
+      local.participants.length
+    ) {
+
+      const {
+        error
+      } =
+        await supabase
+
+          .from("participants")
+
+          .upsert(
+
+            local.participants.map(
+              (p) => ({
+
+                id: p.id,
+
+                name: p.name,
+
+                phone:
+                  p.phone || "",
+
+                village:
+                  p.village || "",
+
+                district:
+                  p.district || "",
+
+                regency:
+                  p.regency || ""
+
+              })
+            ),
+
+            {
+              onConflict: "id"
+            }
+
+          );
+
+
+      if (error)
+        throw error;
+    }
+
+
+    if (
+      local.attendance.length
+    ) {
+
+      const {
+        error
+      } =
+        await supabase
+
+          .from("attendance")
+
+          .upsert(
+
+            local.attendance.map(
+              (a) => ({
+
+                participant_id:
+                  a.id,
+
+                time:
+                  a.time
+
+              })
+            ),
+
+            {
+              onConflict:
+                "participant_id"
+            }
+
+          );
+
+
+      if (error)
+        throw error;
+    }
+
+
+    data = {
+
+      participants:
+        local.participants,
+
+      attendance:
+        local.attendance
+
+    };
+
+
+    data.participants
+      .forEach(
+        rememberAddress
+      );
+
+
+    cacheData();
+
+    render();
+
+
+    toast(
+      "Data lama berhasil dipindahkan ke database online."
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "Migration error:",
+      error
+    );
+
+
+    data = local;
+
+    render();
+
+
+    toast(
+      "Gagal memindahkan data ke Supabase."
+    );
+  }
+}
+
+
+/* =========================================================
+   REALTIME
+========================================================= */
+
+function subscribeRealtime() {
+
+  if (
+    !supabase ||
+    realtimeChannel
+  ) {
+
+    return;
+  }
+
+
+  realtimeChannel =
+
+    supabase
+
+      .channel(
+        "maskana-db-changes"
       )
-      .forEach((button) => {
+
+      .on(
+
+        "postgres_changes",
+
+        {
+          event: "*",
+          schema: "public",
+          table: "participants"
+        },
+
+        () => {
+
+          console.log(
+            "🔄 Peserta berubah. Memuat ulang..."
+          );
+
+          loadRemoteData();
+        }
+
+      )
+
+      .on(
+
+        "postgres_changes",
+
+        {
+          event: "*",
+          schema: "public",
+          table: "attendance"
+        },
+
+        () => {
+
+          console.log(
+            "🔄 Kehadiran berubah. Memuat ulang..."
+          );
+
+          loadRemoteData();
+        }
+
+      )
+
+      .subscribe(
+        (status) => {
+
+          console.log(
+            "Supabase Realtime:",
+            status
+          );
+
+        }
+      );
+}
+
+
+/* =========================================================
+   NAVIGASI
+========================================================= */
+
+function setupNavigation() {
+
+  document
+    .querySelectorAll(
+      ".nav-item"
+    )
+    .forEach(
+      (button) => {
+
         button.addEventListener(
           "click",
           () => {
-            const p =
-              findParticipant(
-                button.dataset.id
+
+            document
+              .querySelectorAll(
+                ".nav-item,.tab"
+              )
+              .forEach(
+                (item) =>
+                  item.classList.remove(
+                    "active"
+                  )
               );
 
-            if (p) {
-              showQR(p);
+
+            button.classList.add(
+              "active"
+            );
+
+
+            const tab =
+              $(
+                "#" +
+                button.dataset.tab
+              );
+
+
+            if (tab) {
+
+              tab.classList.add(
+                "active"
+              );
+            }
+
+
+            if ($("#pageTitle")) {
+
+              $("#pageTitle")
+                .textContent =
+
+                button.dataset.tab ===
+                "dashboard"
+
+                  ? "Selamat datang 👋"
+
+                  : button.textContent
+                      .trim();
+            }
+
+
+            if (
+              button.dataset.tab ===
+              "scan"
+            ) {
+
+              setTimeout(
+                () =>
+                  $("#scanInput")
+                    ?.focus(),
+                100
+              );
             }
           }
         );
-      });
-
-    /*
-     * Tombol hapus
-     */
-    tbody
-      .querySelectorAll(
-        ".delete-button"
-      )
-      .forEach((button) => {
-        button.addEventListener(
-          "click",
-          async () => {
-            await deleteParticipant(
-              button.dataset.id
-            );
-          }
-        );
-      });
-  }
-
-  /* =====================================================
-     CARI PESERTA
-  ===================================================== */
-
-  function findParticipant(id) {
-    return participants.find(
-      (p) =>
-        String(p.id) ===
-        String(id)
-    );
-  }
-
-  /* =====================================================
-     TAMBAH PESERTA
-  ===================================================== */
-
-  async function addParticipant(data) {
-    const participant = {
-      id: generateId(),
-      name: data.name.trim(),
-      phone: data.phone.trim(),
-      village: data.village.trim(),
-      district: data.district.trim(),
-      regency: data.regency.trim()
-    };
-
-    /*
-     * Simpan lokal dulu
-     */
-    participants.push(
-      participant
-    );
-
-    saveLocal();
-    renderAll();
-
-    /*
-     * Simpan ke Supabase
-     */
-    if (supabase) {
-      try {
-        const result =
-          await supabase
-            .from(PARTICIPANT_TABLE)
-            .insert([
-              participant
-            ]);
-
-        if (result.error) {
-          throw result.error;
-        }
-
-        toast(
-          "Peserta berhasil disimpan online."
-        );
-      } catch (error) {
-        console.error(
-          "Supabase insert peserta:",
-          error
-        );
-
-        toast(
-          "Tersimpan di perangkat, tetapi belum masuk server."
-        );
-
-        return;
-      }
-    }
-
-    /*
-     * Tampilkan QR
-     */
-    showQR(participant);
-  }
-
-  /* =====================================================
-     HAPUS PESERTA
-  ===================================================== */
-
-  async function deleteParticipant(
-    id
-  ) {
-    const participant =
-      findParticipant(id);
-
-    if (!participant) return;
-
-    const ok =
-      confirm(
-        `Hapus peserta "${participant.name}"?`
-      );
-
-    if (!ok) return;
-
-    participants =
-      participants.filter(
-        (p) =>
-          String(p.id) !==
-          String(id)
-      );
-
-    /*
-     * Hapus kehadiran lokal
-     */
-    attendance =
-      attendance.filter(
-        (a) =>
-          String(
-            a.participant_id
-          ) !== String(id)
-      );
-
-    saveLocal();
-
-    renderAll();
-
-    /*
-     * Hapus online
-     */
-    if (supabase) {
-      try {
-        const result =
-          await supabase
-            .from(PARTICIPANT_TABLE)
-            .delete()
-            .eq("id", id);
-
-        if (result.error) {
-          throw result.error;
-        }
-
-        toast(
-          "Peserta berhasil dihapus."
-        );
-      } catch (error) {
-        console.error(error);
-
-        toast(
-          "Penghapusan server gagal."
-        );
-      }
-    }
-  }
-
-  /* =====================================================
-     FORM TAMBAH PESERTA
-  ===================================================== */
-
-  function setupParticipantForm() {
-    const form =
-      $("participantForm");
-
-    if (!form) return;
-
-    form.addEventListener(
-      "submit",
-      async (event) => {
-        /*
-         * Sangat penting:
-         * cegah dialog ditutup otomatis
-         */
-        event.preventDefault();
-
-        const formData =
-          new FormData(form);
-
-        const data = {
-          name:
-            formData.get("name") || "",
-
-          phone:
-            formData.get("phone") || "",
-
-          village:
-            formData.get("village") || "",
-
-          district:
-            formData.get("district") || "",
-
-          regency:
-            formData.get("regency") || ""
-        };
-
-        if (
-          !data.name ||
-          !data.phone ||
-          !data.village ||
-          !data.district ||
-          !data.regency
-        ) {
-          toast(
-            "Semua data peserta wajib diisi."
-          );
-
-          return;
-        }
-
-        await addParticipant(
-          data
-        );
-
-        form.reset();
-
-        $("participantModal").close();
       }
     );
-  }
 
-  /* =====================================================
-     MODAL TAMBAH PESERTA
-  ===================================================== */
 
-  function setupParticipantModal() {
-    const button =
-      $("addParticipant");
+  document
+    .querySelectorAll(
+      "[data-go]"
+    )
+    .forEach(
+      (button) => {
 
-    const modal =
-      $("participantModal");
-
-    if (
-      !button ||
-      !modal
-    ) {
-      return;
-    }
-
-    button.addEventListener(
-      "click",
-      () => {
-        modal.showModal();
-      }
-    );
-  }
-
-  /* =====================================================
-     QR
-  ===================================================== */
-
-  function showQR(participant) {
-    currentParticipant =
-      participant;
-
-    $("cardName").textContent =
-      participant.name;
-
-    $("cardAddress").textContent =
-      [
-        participant.village,
-        participant.district,
-        participant.regency
-      ]
-        .filter(Boolean)
-        .join(", ");
-
-    $("cardPhone").textContent =
-      participant.phone || "-";
-
-    const qrContainer =
-      $("qrCode");
-
-    qrContainer.innerHTML = "";
-
-    if (
-      window.QRCode
-    ) {
-      new QRCode(
-        qrContainer,
-        {
-          text:
-            participant.id,
-          width: 150,
-          height: 150,
-          correctLevel:
-            QRCode.CorrectLevel.H
-        }
-      );
-    }
-
-    $("qrModal").showModal();
-  }
-
-  /* =====================================================
-     TUTUP QR
-  ===================================================== */
-
-  function setupQRModal() {
-    document
-      .querySelectorAll(
-        ".close-qr"
-      )
-      .forEach((button) => {
         button.addEventListener(
           "click",
           () => {
-            $("qrModal").close();
+
+            const target =
+              document.querySelector(
+                `.nav-item[data-tab="${button.dataset.go}"]`
+              );
+
+
+            target?.click();
           }
         );
-      });
-  }
+      }
+    );
+}
 
-  /* =====================================================
-     DOWNLOAD KARTU
-  ===================================================== */
 
-  function setupDownloadCard() {
-    const button =
-      $("downloadCard");
+/* =========================================================
+   TAMBAH PESERTA
+========================================================= */
 
-    if (!button) return;
+function setupParticipantForm() {
+
+  const button =
+    $("#addParticipant");
+
+
+  const modal =
+    $("#participantModal");
+
+
+  const form =
+    $("#participantForm");
+
+
+  if (button && modal) {
 
     button.addEventListener(
       "click",
-      async () => {
-        if (
-          !window.html2canvas
-        ) {
-          toast(
-            "html2canvas belum tersedia."
-          );
-
-          return;
-        }
-
-        const card =
-          $("participantCard");
-
-        try {
-          const canvas =
-            await html2canvas(
-              card,
-              {
-                scale: 3,
-                backgroundColor:
-                  null
-              }
-            );
-
-          const link =
-            document.createElement(
-              "a"
-            );
-
-          link.download =
-            `kartu-${currentParticipant?.id || "peserta"}.png`;
-
-          link.href =
-            canvas.toDataURL(
-              "image/png"
-            );
-
-          link.click();
-
-          toast(
-            "Kartu berhasil dibuat."
-          );
-        } catch (error) {
-          console.error(error);
-
-          toast(
-            "Gagal membuat kartu."
-          );
-        }
-      }
+      () => modal.showModal()
     );
   }
 
-  /* =====================================================
-     SCANNER
-  ===================================================== */
 
-  function setupScanner() {
-    const input =
-      $("scanInput");
+  if (!form) return;
 
-    if (!input) return;
 
-    input.addEventListener(
-      "keydown",
-      async (event) => {
-        if (
-          event.key !== "Enter"
-        ) {
-          return;
-        }
+  form.addEventListener(
+    "submit",
+    async (event) => {
 
-        event.preventDefault();
+      event.preventDefault();
 
-        const code =
-          input.value.trim();
 
-        if (!code) return;
-
-        await processScan(
-          code
-        );
-
-        input.value = "";
-
-        setTimeout(() => {
-          input.focus();
-        }, 100);
-      }
-    );
-
-    input.addEventListener(
-      "blur",
-      () => {
-        /*
-         * Jangan paksa fokus jika
-         * user sedang berada di halaman lain.
-         */
-      }
-    );
-  }
-
-  /* =====================================================
-     SCAN
-  ===================================================== */
-
-  async function processScan(
-    code
-  ) {
-    let id = String(
-      code || ""
-    ).trim();
-
-    /*
-     * Jika QR berisi URL
-     */
-    try {
-      if (
-        id.startsWith(
-          "http://"
-        ) ||
-        id.startsWith(
-          "https://"
-        )
-      ) {
-        const url =
-          new URL(id);
-
-        id =
-          url.searchParams.get(
-            "id"
-          ) || id;
-      }
-    } catch (_) {}
-
-    /*
-     * Cari berdasarkan ID
-     */
-    let participant =
-      findParticipant(id);
-
-    /*
-     * Coba cari berdasarkan nama
-     */
-    if (!participant) {
-      participant =
-        participants.find(
-          (p) =>
-            String(
-              p.name
-            )
-              .toLowerCase() ===
-            id.toLowerCase()
-        );
-    }
-
-    if (!participant) {
-      showScanError(
-        `Kode peserta "${id}" tidak ditemukan.`
-      );
-
-      return;
-    }
-
-    await recordAttendance(
-      participant
-    );
-  }
-
-  /* =====================================================
-     HASIL SCAN
-  ===================================================== */
-
-  function showScanError(
-    message
-  ) {
-    $("scanResult").innerHTML = `
-      <div class="result-placeholder">
-        <div>!</div>
-        <h3>Peserta tidak ditemukan</h3>
-        <p>${escapeHTML(message)}</p>
-      </div>
-    `;
-  }
-
-  function showScanSuccess(
-    participant,
-    time
-  ) {
-    $("scanResult").innerHTML = `
-      <div class="result-success">
-        <div class="result-icon">✓</div>
-
-        <p class="eyebrow">
-          KEHADIRAN TERCATAT
-        </p>
-
-        <h3>
-          ${escapeHTML(
-            participant.name
-          )}
-        </h3>
-
-        <p>
-          ${escapeHTML(
-            participant.village || "-"
-          )}
-          ·
-          ${escapeHTML(
-            participant.district || "-"
-          )}
-        </p>
-
-        <strong>
-          ${formatTime(time)}
-        </strong>
-      </div>
-    `;
-  }
-
-  /* =====================================================
-     CATAT KEHADIRAN
-  ===================================================== */
-
-  async function recordAttendance(
-    participant
-  ) {
-    const now =
-      new Date();
-
-    /*
-     * Cek sudah hadir hari ini
-     */
-    const already =
-      attendance.some(
-        (a) => {
-          const samePerson =
-            String(
-              a.participant_id
-            ) ===
-            String(
-              participant.id
-            );
-
-          const sameDay =
-            new Date(a.time)
-              .toDateString() ===
-            now.toDateString();
-
-          return (
-            samePerson &&
-            sameDay
-          );
-        }
-      );
-
-    if (already) {
-      showScanSuccess(
-        participant,
-        now
-      );
-
-      toast(
-        `${participant.name} sudah tercatat hadir hari ini.`
-      );
-
-      return;
-    }
-
-    const record = {
-      participant_id:
-        participant.id,
-
-      time:
-        now.toISOString()
-    };
-
-    /*
-     * Supabase
-     */
-    if (supabase) {
-      try {
-        const result =
-          await supabase
-            .from(
-              ATTENDANCE_TABLE
-            )
-            .insert([
-              record
-            ])
-            .select();
-
-        if (result.error) {
-          throw result.error;
-        }
-
-        /*
-         * Ambil data terbaru
-         */
-        await loadAttendance();
-
-        showScanSuccess(
-          participant,
-          now
-        );
+      if (!supabase) {
 
         toast(
-          "Kehadiran berhasil tersimpan online."
+          "Database online belum terhubung."
         );
 
         return;
+      }
+
+
+      const formData =
+        new FormData(form);
+
+
+      const participant = {
+
+        id:
+          "HK-" +
+          Date.now()
+            .toString(36)
+            .toUpperCase() +
+          "-" +
+          Math.random()
+            .toString(36)
+            .slice(2, 6)
+            .toUpperCase(),
+
+        name:
+          String(
+            formData.get("name") || ""
+          ).trim(),
+
+        phone:
+          String(
+            formData.get("phone") || ""
+          ).trim(),
+
+        village:
+          String(
+            formData.get("village") || ""
+          ).trim(),
+
+        district:
+          String(
+            formData.get("district") || ""
+          ).trim(),
+
+        regency:
+          String(
+            formData.get("regency") || ""
+          ).trim()
+
+      };
+
+
+      const submitButton =
+        form.querySelector(
+          'button[type="submit"]'
+        );
+
+
+      if (submitButton) {
+
+        submitButton.disabled =
+          true;
+      }
+
+
+      try {
+
+        const {
+          error
+        } =
+
+          await supabase
+
+            .from(
+              "participants"
+            )
+
+            .insert(
+              participant
+            );
+
+
+        if (error)
+          throw error;
+
+
+        data.participants.unshift(
+          participant
+        );
+
+
+        rememberAddress(
+          participant
+        );
+
+
+        cacheData();
+
+        render();
+
+
+        form.reset();
+
+
+        modal.close();
+
+
+        showQR(
+          participant.id
+        );
+
+
+        toast(
+          "Peserta berhasil disimpan ke database online."
+        );
+
+
       } catch (error) {
+
         console.error(
-          "Gagal menyimpan attendance:",
+          "Tambah peserta:",
           error
         );
 
-        /*
-         * Tetap simpan lokal
-         */
-        attendance.unshift({
-          id: Date.now(),
-          ...record
-        });
-
-        saveLocal();
-
-        renderAll();
-
-        showScanSuccess(
-          participant,
-          now
-        );
 
         toast(
-          "Internet bermasalah. Kehadiran tersimpan sementara."
+          `Gagal menambah peserta: ${
+            error.message ||
+            "error database"
+          }`
         );
 
-        return;
+
+      } finally {
+
+        if (submitButton) {
+
+          submitButton.disabled =
+            false;
+        }
       }
     }
+  );
+}
 
-    /*
-     * MODE LOKAL
-     */
-    attendance.unshift({
-      id: Date.now(),
-      ...record
-    });
 
-    saveLocal();
+/* =========================================================
+   SCAN QR
+========================================================= */
 
-    renderAll();
+function setupScanner() {
 
-    showScanSuccess(
-      participant,
-      now
+  const input =
+    $("#scanInput");
+
+
+  if (!input) return;
+
+
+  input.addEventListener(
+    "keydown",
+    (event) => {
+
+      if (
+        event.key ===
+        "Enter"
+      ) {
+
+        event.preventDefault();
+
+        recordScan(
+          input.value
+        );
+      }
+    }
+  );
+}
+
+
+async function recordScan(
+  code
+) {
+
+  if (!supabase) {
+
+    toast(
+      "Database online belum terhubung."
     );
+
+    return;
   }
 
-  /* =====================================================
-     RENDER ATTENDANCE
-  ===================================================== */
 
-  function renderAttendance() {
-    const tbody =
-      $("attendanceRows");
+  const cleanCode =
+    String(code || "")
+      .trim();
 
-    if (!tbody) return;
 
-    const search =
-      (
-        $("attendanceSearch")
-          ?.value || ""
-      )
-        .toLowerCase()
-        .trim();
+  if (!cleanCode) {
 
-    const today =
-      new Date().toDateString();
+    toast(
+      "Kode QR kosong."
+    );
 
-    const rows =
-      attendance.filter(
-        (a) => {
-          const sameDay =
-            new Date(a.time)
-              .toDateString() ===
-            today;
+    return;
+  }
 
-          if (!sameDay) {
-            return false;
-          }
 
-          const p =
-            findParticipant(
-              a.participant_id
-            );
+  const participant =
+    data.participants.find(
+      (p) =>
+        String(p.id)
+          .toLowerCase() ===
+        cleanCode.toLowerCase()
+    );
 
-          if (!search) {
-            return true;
-          }
 
-          return [
-            p?.name,
-            p?.village,
-            p?.district
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(search);
-        }
-      );
+  if ($("#scanInput")) {
 
-    $("attendanceCount").textContent =
-      `${rows.length} peserta tercatat hadir`;
+    $("#scanInput").value =
+      "";
+  }
 
-    if (!rows.length) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="4"
-              style="text-align:center;padding:30px">
-            Belum ada peserta yang hadir.
-          </td>
-        </tr>
+
+  if (!participant) {
+
+    toast(
+      "Kode QR tidak ditemukan."
+    );
+
+
+    if ($("#scanResult")) {
+
+      $("#scanResult").innerHTML = `
+
+        <div class="result-card">
+
+          <div
+            class="success-icon"
+            style="
+              background:#fff0ee;
+              color:#da6c60
+            "
+          >
+            !
+          </div>
+
+          <h2>
+            Kode tidak ditemukan
+          </h2>
+
+          <p>
+            Pastikan QR berasal dari aplikasi ini.
+          </p>
+
+        </div>
+
       `;
-
-      return;
     }
 
-    tbody.innerHTML =
-      rows
-        .map((a) => {
-          const p =
-            findParticipant(
-              a.participant_id
-            );
-
-          return `
-            <tr>
-              <td>
-                <strong>
-                  ${escapeHTML(
-                    p?.name ||
-                    a.participant_id
-                  )}
-                </strong>
-              </td>
-
-              <td>
-                ${escapeHTML(
-                  [
-                    p?.village,
-                    p?.district,
-                    p?.regency
-                  ]
-                    .filter(Boolean)
-                    .join(", ")
-                )}
-              </td>
-
-              <td>
-                ${formatTime(
-                  a.time
-                )}
-              </td>
-
-              <td>
-                <span class="status-hadir">
-                  ✓ HADIR
-                </span>
-              </td>
-            </tr>
-          `;
-        })
-        .join("");
+    return;
   }
 
-  /* =====================================================
-     SEARCH KEHADIRAN
-  ===================================================== */
 
-  function setupAttendanceSearch() {
-    const input =
-      $("attendanceSearch");
-
-    if (!input) return;
-
-    input.addEventListener(
-      "input",
-      () => {
-        renderAttendance();
-      }
+  const existing =
+    data.attendance.find(
+      (a) =>
+        a.id ===
+        participant.id
     );
+
+
+  if (existing) {
+
+    toast(
+      `${participant.name} sudah tercatat hadir.`
+    );
+
+
+    if ($("#scanResult")) {
+
+      $("#scanResult").innerHTML =
+        resultHTML(
+          participant,
+          existing.time,
+          true
+        );
+    }
+
+
+    return;
   }
 
-  /* =====================================================
-     REKAP DESA
-  ===================================================== */
 
-  function renderRecap() {
-    const tbody =
-      $("recapRows");
+  const time =
+    new Date().toISOString();
 
-    if (!tbody) return;
 
-    const villages = {};
+  const {
+    error
+  } =
 
-    participants.forEach(
-      (p) => {
-        const key =
-          [
-            p.village,
-            p.district,
-            p.regency
-          ]
-            .join("|");
+    await supabase
 
-        if (!villages[key]) {
-          villages[key] = {
-            village:
-              p.village || "-",
+      .from("attendance")
 
-            district:
-              p.district || "-",
+      .insert({
 
-            regency:
-              p.regency || "-",
+        participant_id:
+          participant.id,
 
-            total: 0,
-            hadir: 0
-          };
-        }
+        time:
+          time
 
-        villages[key].total++;
-      }
-    );
-
-    const today =
-      new Date().toDateString();
-
-    attendance
-      .filter(
-        (a) =>
-          new Date(a.time)
-            .toDateString() ===
-          today
-      )
-      .forEach((a) => {
-        const p =
-          findParticipant(
-            a.participant_id
-          );
-
-        if (!p) return;
-
-        const key =
-          [
-            p.village,
-            p.district,
-            p.regency
-          ]
-            .join("|");
-
-        if (!villages[key]) {
-          villages[key] = {
-            village:
-              p.village || "-",
-
-            district:
-              p.district || "-",
-
-            regency:
-              p.regency || "-",
-
-            total: 0,
-            hadir: 0
-          };
-        }
-
-        villages[key].hadir++;
       });
 
-    const data =
-      Object.values(
-        villages
+
+  if (error) {
+
+    if (
+      error.code ===
+      "23505"
+    ) {
+
+      await loadRemoteData();
+
+
+      const latest =
+        data.attendance.find(
+          (a) =>
+            a.id ===
+            participant.id
+        );
+
+
+      toast(
+        `${participant.name} sudah tercatat hadir.`
       );
 
-    if (!data.length) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="6"
-              style="text-align:center;padding:30px">
-            Belum ada data desa.
-          </td>
-        </tr>
-      `;
+
+      if ($("#scanResult")) {
+
+        $("#scanResult").innerHTML =
+          resultHTML(
+            participant,
+            latest?.time ||
+              time,
+            true
+          );
+      }
+
 
       return;
     }
 
-    tbody.innerHTML =
-      data
-        .sort(
-          (a, b) =>
-            a.village.localeCompare(
-              b.village
-            )
-        )
-        .map((v) => {
-          const percentage =
-            v.total
-              ? Math.round(
-                  v.hadir /
-                    v.total *
-                    100
-                )
-              : 0;
 
-          return `
-            <tr>
-              <td>
-                ${escapeHTML(
-                  v.village
-                )}
-              </td>
+    console.error(
+      "Scan error:",
+      error
+    );
 
-              <td>
-                ${escapeHTML(
-                  v.district
-                )}
-              </td>
 
-              <td>
-                ${escapeHTML(
-                  v.regency
-                )}
-              </td>
+    toast(
+      `Gagal menyimpan kehadiran: ${
+        error.message ||
+        "error database"
+      }`
+    );
 
-              <td>
-                ${v.total}
-              </td>
 
-              <td>
-                ${v.hadir}
-              </td>
+    return;
+  }
 
-              <td>
-                ${percentage}%
-              </td>
-            </tr>
-          `;
-        })
-        .join("");
 
-    renderRecapSummary(
-      data
+  data.attendance.unshift({
+
+    id:
+      participant.id,
+
+    time:
+      time
+
+  });
+
+
+  cacheData();
+
+  render();
+
+
+  if ($("#scanResult")) {
+
+    $("#scanResult").innerHTML =
+      resultHTML(
+        participant,
+        time,
+        false
+      );
+  }
+
+
+  toast(
+    `Kehadiran ${participant.name} berhasil dicatat!`
+  );
+}
+
+
+function resultHTML(
+  participant,
+  time,
+  already
+) {
+
+  return `
+
+    <div class="result-card">
+
+      <div class="success-icon">
+        ${already ? "i" : "✓"}
+      </div>
+
+      <h2>
+        ${
+          already
+            ? "Sudah tercatat hadir"
+            : "Kehadiran berhasil!"
+        }
+      </h2>
+
+      <p>
+        ${
+          already
+            ? "Peserta ini telah dipindai sebelumnya."
+            : "Data kehadiran tersimpan secara online."
+        }
+      </p>
+
+      <span
+        class="avatar"
+        style="
+          margin:0 auto 10px;
+          width:42px;
+          height:42px
+        "
+      >
+        ${initials(
+          participant.name
+        )}
+      </span>
+
+      <h3
+        style="
+          margin:0;
+          font-size:15px
+        "
+      >
+        ${esc(
+          participant.name
+        )}
+      </h3>
+
+      <div class="result-details">
+
+        <p>
+          Desa
+          <b>
+            ${esc(
+              participant.village
+            )}
+          </b>
+        </p>
+
+        <p>
+          Kecamatan
+          <b>
+            ${esc(
+              participant.district
+            )}
+          </b>
+        </p>
+
+        <p>
+          Waktu hadir
+          <b>
+            ${fmtTime(time)}
+          </b>
+        </p>
+
+      </div>
+
+    </div>
+
+  `;
+}
+
+
+/* =========================================================
+   QR CARD
+========================================================= */
+
+function showQR(id) {
+
+  const participant =
+    data.participants.find(
+      (p) => p.id === id
+    );
+
+
+  if (!participant)
+    return;
+
+
+  activeCardParticipant =
+    participant;
+
+
+  if ($("#cardName")) {
+
+    $("#cardName").textContent =
+      participant.name;
+  }
+
+
+  if ($("#cardAddress")) {
+
+    $("#cardAddress").textContent =
+      `${participant.village}, ${participant.district}, ${participant.regency}`;
+  }
+
+
+  if ($("#cardPhone")) {
+
+    $("#cardPhone").textContent =
+      participant.phone;
+  }
+
+
+  const qrBox =
+    $("#qrCode");
+
+
+  if (qrBox) {
+
+    qrBox.innerHTML =
+      "";
+
+
+    new QRCode(
+      qrBox,
+      {
+
+        text:
+          participant.id,
+
+        width:
+          160,
+
+        height:
+          160,
+
+        colorDark:
+          "#073d39",
+
+        colorLight:
+          "#ffffff",
+
+        correctLevel:
+          QRCode.CorrectLevel.M
+
+      }
     );
   }
 
-  function renderRecapSummary(
-    data
-  ) {
-    const container =
-      $("recapSummary");
 
-    if (!container) return;
+  $("#qrModal")?.showModal();
+}
 
-    const total =
-      data.reduce(
-        (sum, item) =>
-          sum + item.total,
-        0
-      );
 
-    const hadir =
-      data.reduce(
-        (sum, item) =>
-          sum + item.hadir,
-        0
-      );
+/* =========================================================
+   DOWNLOAD KARTU
+========================================================= */
 
-    const desa =
-      data.length;
+async function cardFile() {
 
-    const percentage =
-      total
-        ? Math.round(
-            hadir /
-              total *
-              100
-          )
-        : 0;
-
-    container.innerHTML = `
-      <div class="recap-card">
-        <strong>${desa}</strong>
-        <span>Desa</span>
-      </div>
-
-      <div class="recap-card">
-        <strong>${total}</strong>
-        <span>Terdaftar</span>
-      </div>
-
-      <div class="recap-card">
-        <strong>${hadir}</strong>
-        <span>Hadir</span>
-      </div>
-
-      <div class="recap-card">
-        <strong>${percentage}%</strong>
-        <span>Kehadiran</span>
-      </div>
-    `;
-  }
-
-  /* =====================================================
-     EXPORT CSV
-  ===================================================== */
-
-  function csvEscape(value) {
-    return `"${String(
-      value ?? ""
-    ).replace(
-      /"/g,
-      '""'
-    )}"`;
-  }
-
-  function exportCSV() {
-    const rows = [
-      [
-        "ID",
-        "Nama",
-        "WhatsApp",
-        "Desa",
-        "Kecamatan",
-        "Kabupaten",
-        "Waktu Hadir"
-      ]
-    ];
-
-    participants.forEach(
-      (p) => {
-        const records =
-          attendance.filter(
-            (a) =>
-              String(
-                a.participant_id
-              ) ===
-              String(p.id)
-          );
-
-        if (!records.length) {
-          rows.push([
-            p.id,
-            p.name,
-            p.phone,
-            p.village,
-            p.district,
-            p.regency,
-            ""
-          ]);
-
-          return;
-        }
-
-        records.forEach(
-          (a) => {
-            rows.push([
-              p.id,
-              p.name,
-              p.phone,
-              p.village,
-              p.district,
-              p.regency,
-              formatDate(
-                a.time
-              ) +
-                " " +
-                formatTime(
-                  a.time
-                )
-            ]);
-          }
-        );
+  const canvas =
+    await html2canvas(
+      $("#participantCard"),
+      {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: null
       }
     );
 
-    const csv =
-      "\ufeff" +
-      rows
-        .map(
-          (row) =>
-            row
-              .map(csvEscape)
-              .join(",")
+
+  const blob =
+    await new Promise(
+      (resolve) =>
+        canvas.toBlob(
+          resolve,
+          "image/png"
         )
-        .join("\n");
+    );
 
-    const blob =
-      new Blob(
-        [csv],
-        {
-          type:
-            "text/csv;charset=utf-8;"
-        }
-      );
 
-    const url =
-      URL.createObjectURL(
-        blob
-      );
+  return new File(
+
+    [
+      blob
+    ],
+
+    `kartu-qr-${activeCardParticipant.name
+      .replace(
+        /[^a-z0-9]+/gi,
+        "-"
+      )
+      .toLowerCase()}.png`,
+
+    {
+      type:
+        "image/png"
+    }
+
+  );
+}
+
+
+async function downloadCard() {
+
+  if (
+    !activeCardParticipant ||
+    !window.html2canvas
+  ) {
+
+    toast(
+      "Fitur unduh belum siap."
+    );
+
+    return;
+  }
+
+
+  const button =
+    $("#downloadCard");
+
+
+  if (button) {
+
+    button.disabled =
+      true;
+
+    button.textContent =
+      "Menyiapkan...";
+  }
+
+
+  try {
+
+    const file =
+      await cardFile();
+
 
     const link =
       document.createElement(
         "a"
       );
 
-    link.href = url;
 
     link.download =
-      `rekap-maskana-${new Date()
-        .toISOString()
-        .slice(0, 10)}.csv`;
+      file.name;
 
-    document.body.appendChild(
-      link
-    );
+
+    link.href =
+      URL.createObjectURL(
+        file
+      );
+
 
     link.click();
 
-    link.remove();
 
     URL.revokeObjectURL(
-      url
+      link.href
     );
+
+
+    toast(
+      "Kartu QR berhasil diunduh."
+    );
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    toast(
+      "Kartu belum dapat diunduh."
+    );
+
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        "⇩ Unduh PNG";
+    }
+  }
+}
+
+
+/* =========================================================
+   WHATSAPP
+========================================================= */
+
+async function sendWhatsApp() {
+
+  if (
+    !activeCardParticipant ||
+    !window.html2canvas
+  ) {
+
+    toast(
+      "Fitur kartu belum siap."
+    );
+
+    return;
   }
 
-  /* =====================================================
-     TOMBOL EXPORT
-  ===================================================== */
 
-  function setupExport() {
-    $("exportBtn")
-      ?.addEventListener(
-        "click",
-        exportCSV
+  const button =
+    $("#sendWhatsApp");
+
+
+  if (button) {
+
+    button.disabled =
+      true;
+
+    button.textContent =
+      "Menyiapkan kartu...";
+  }
+
+
+  try {
+
+    const file =
+      await cardFile();
+
+
+    const participant =
+      activeCardParticipant;
+
+
+    const text =
+      `Kartu peserta ${participant.name} — Pengajian Alumni MASKANA. Mohon simpan dan tunjukkan QR saat registrasi.`;
+
+
+    if (
+      navigator.canShare &&
+      navigator.canShare({
+        files: [file]
+      })
+    ) {
+
+      await navigator.share({
+
+        title:
+          "Kartu QR Peserta",
+
+        text:
+          text,
+
+        files:
+          [file]
+
+      });
+
+
+      toast(
+        "Pilih WhatsApp pada menu berbagi."
       );
 
-    $("exportBtn2")
-      ?.addEventListener(
-        "click",
-        exportCSV
-      );
-  }
 
-  /* =====================================================
-     WHATSAPP
-  ===================================================== */
-
-  function setupWhatsApp() {
-    const button =
-      $("sendWhatsApp");
-
-    if (!button) return;
-
-    button.addEventListener(
-      "click",
-      () => {
-        if (!currentParticipant) {
-          return;
-        }
-
-        let phone =
-          String(
-            currentParticipant.phone ||
-              ""
-          )
-            .replace(
-              /\D/g,
-              ""
-            );
-
-        if (
-          phone.startsWith(
-            "0"
-          )
-        ) {
-          phone =
-            "62" +
-            phone.substring(
-              1
-            );
-        }
-
-        const message =
-          `Kartu Kehadiran MASKANA\n\n` +
-          `Nama: ${currentParticipant.name}\n` +
-          `ID: ${currentParticipant.id}\n` +
-          `Desa: ${currentParticipant.village}\n` +
-          `Kecamatan: ${currentParticipant.district}\n` +
-          `Kabupaten: ${currentParticipant.regency}`;
-
-        const url =
-          `https://wa.me/${phone}?text=` +
-          encodeURIComponent(
-            message
-          );
-
-        window.open(
-          url,
-          "_blank"
-        );
-      }
-    );
-  }
-
-  /* =====================================================
-     VILLAGE AUTOCOMPLETE
-  ===================================================== */
-
-  function updateVillageOptions() {
-    const list =
-      $("villageOptions");
-
-    if (!list) return;
-
-    const villages =
-      [
-        ...new Set(
-          participants
-            .map(
-              (p) =>
-                p.village
-            )
-            .filter(Boolean)
-        )
-      ].sort();
-
-    list.innerHTML =
-      villages
-        .map(
-          (village) =>
-            `<option value="${escapeHTML(
-              village
-            )}"></option>`
-        )
-        .join("");
-  }
-
-  function setupVillageAutoFill() {
-    const village =
-      $("villageInput");
-
-    const district =
-      $("districtInput");
-
-    const regency =
-      $("regencyInput");
-
-    if (!village) return;
-
-    village.addEventListener(
-      "input",
-      () => {
-        const value =
-          village.value
-            .trim()
-            .toLowerCase();
-
-        const found =
-          participants.find(
-            (p) =>
-              String(
-                p.village || ""
-              )
-                .toLowerCase() ===
-              value
-          );
-
-        if (found) {
-          if (
-            district &&
-            !district.value
-          ) {
-            district.value =
-              found.district ||
-              "";
-          }
-
-          if (
-            regency &&
-            !regency.value
-          ) {
-            regency.value =
-              found.regency ||
-              "";
-          }
-        }
-      }
-    );
-  }
-
-  /* =====================================================
-     RENDER SEMUA
-  ===================================================== */
-
-  function renderAll() {
-    renderDashboard();
-
-    renderParticipants();
-
-    renderAttendance();
-
-    renderRecap();
-
-    updateVillageOptions();
-  }
-
-  /* =====================================================
-     INIT
-  ===================================================== */
-
-  async function init() {
-    console.log(
-      "MASKANA APP START"
-    );
-
-    /*
-     * Ini penting:
-     * navigasi dipasang PALING AWAL.
-     * Jadi walaupun Supabase error,
-     * tombol tetap bekerja.
-     */
-    setupNavigation();
-
-    setupParticipantModal();
-
-    setupParticipantForm();
-
-    setupScanner();
-
-    setupAttendanceSearch();
-
-    setupExport();
-
-    setupDownloadCard();
-
-    setupQRModal();
-
-    setupWhatsApp();
-
-    setupVillageAutoFill();
-
-    updateDate();
-
-    setInterval(
-      updateDate,
-      60000
-    );
-
-    /*
-     * Load lokal
-     */
-    loadLocal();
-
-    renderAll();
-
-    /*
-     * Load online
-     */
-    if (supabase) {
-      await loadOnline();
-
-      setupRealtime();
     } else {
-      console.warn(
-        "Aplikasi berjalan tanpa Supabase."
+
+      const link =
+        document.createElement(
+          "a"
+        );
+
+
+      link.download =
+        file.name;
+
+
+      link.href =
+        URL.createObjectURL(
+          file
+        );
+
+
+      link.click();
+
+
+      URL.revokeObjectURL(
+        link.href
+      );
+
+
+      toast(
+        "Kartu diunduh. Silakan lampirkan ke WhatsApp."
       );
     }
 
-    /*
-     * Mulai dari dashboard
-     */
-    openTab(
-      "dashboard"
-    );
 
-    console.log(
-      "MASKANA APP READY"
-    );
+  } catch (error) {
+
+    if (
+      error.name !==
+      "AbortError"
+    ) {
+
+      console.error(error);
+
+      toast(
+        "Kartu belum dapat dikirim."
+      );
+    }
+
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        "◉ Kirim kartu ke WhatsApp";
+    }
   }
+}
 
-  /* =====================================================
-     JALANKAN
-  ===================================================== */
+
+/* =========================================================
+   PENCARIAN
+========================================================= */
+
+function setupSearch() {
+
+  $("#participantSearch")
+    ?.addEventListener(
+      "input",
+      renderParticipants
+    );
+
+
+  $("#attendanceSearch")
+    ?.addEventListener(
+      "input",
+      renderAttendance
+    );
+}
+
+
+/* =========================================================
+   AUTOFILL DESA
+========================================================= */
+
+function setupVillageAutoFill() {
+
+  const input =
+    $("#villageInput");
+
+
+  if (!input)
+    return;
+
+
+  input.addEventListener(
+    "input",
+    autoFillAddress
+  );
+
+
+  input.addEventListener(
+    "change",
+    autoFillAddress
+  );
+}
+
+
+/* =========================================================
+   HAPUS PESERTA
+========================================================= */
+
+function setupDeleteButtons() {
+
+  document.addEventListener(
+    "click",
+    async (event) => {
+
+      const id =
+        event.target.dataset.delete;
+
+
+      if (!id)
+        return;
+
+
+      const participant =
+        data.participants.find(
+          (p) => p.id === id
+        );
+
+
+      if (!participant)
+        return;
+
+
+      if (
+        !confirm(
+          `Hapus ${participant.name}?`
+        )
+      ) {
+
+        return;
+      }
+
+
+      if (!supabase) {
+
+        toast(
+          "Database online belum terhubung."
+        );
+
+        return;
+      }
+
+
+      try {
+
+        const {
+          error
+        } =
+
+          await supabase
+
+            .from(
+              "participants"
+            )
+
+            .delete()
+
+            .eq(
+              "id",
+              participant.id
+            );
+
+
+        if (error)
+          throw error;
+
+
+        data.participants =
+          data.participants.filter(
+            (p) =>
+              p.id !==
+              participant.id
+          );
+
+
+        data.attendance =
+          data.attendance.filter(
+            (a) =>
+              a.id !==
+              participant.id
+          );
+
+
+        cacheData();
+
+        render();
+
+
+        toast(
+          "Peserta berhasil dihapus."
+        );
+
+
+      } catch (error) {
+
+        console.error(error);
+
+        toast(
+          `Gagal menghapus peserta: ${
+            error.message ||
+            "error database"
+          }`
+        );
+      }
+    }
+  );
+}
+
+
+/* =========================================================
+   TOMBOL QR
+========================================================= */
+
+function setupQRButtons() {
+
+  document.addEventListener(
+    "click",
+    (event) => {
+
+      const id =
+        event.target.dataset.qr;
+
+
+      if (id) {
+
+        showQR(id);
+      }
+    }
+  );
+}
+
+
+/* =========================================================
+   EXPORT CSV
+========================================================= */
+
+function exportCSV() {
+
+  const rows = [
+
+    [
+      "Nama",
+      "Desa",
+      "Kecamatan",
+      "Kabupaten",
+      "WhatsApp",
+      "Waktu Hadir"
+    ],
+
+    ...data.participants.map(
+      (participant) => {
+
+        const hadir =
+          data.attendance.find(
+            (a) =>
+              a.id ===
+              participant.id
+          );
+
+
+        return [
+
+          participant.name,
+
+          participant.village,
+
+          participant.district,
+
+          participant.regency,
+
+          participant.phone,
+
+          hadir
+
+            ? new Date(
+                hadir.time
+              ).toLocaleString(
+                "id-ID"
+              )
+
+            : "Belum hadir"
+
+        ];
+      }
+    )
+
+  ];
+
+
+  const csv =
+
+    "\ufeff" +
+
+    rows
+
+      .map(
+        (row) =>
+
+          row
+
+            .map(
+              (value) =>
+
+                '"' +
+                String(
+                  value
+                ).replaceAll(
+                  '"',
+                  '""'
+                ) +
+                '"'
+            )
+
+            .join(",")
+      )
+
+      .join("\n");
+
+
+  const blob =
+    new Blob(
+      [csv],
+      {
+        type:
+          "text/csv;charset=utf-8"
+      }
+    );
+
+
+  const link =
+    document.createElement(
+      "a"
+    );
+
+
+  const url =
+    URL.createObjectURL(
+      blob
+    );
+
+
+  link.href =
+    url;
+
+
+  link.download =
+    "rekap-absensi-maskana.csv";
+
+
+  document.body.appendChild(
+    link
+  );
+
+
+  link.click();
+
+
+  link.remove();
+
+
+  URL.revokeObjectURL(
+    url
+  );
+
+
+  toast(
+    "Data rekap berhasil diunduh."
+  );
+}
+
+
+/* =========================================================
+   TOMBOL EXPORT
+========================================================= */
+
+function setupExport() {
+
+  $("#exportBtn")
+    ?.addEventListener(
+      "click",
+      exportCSV
+    );
+
+
+  $("#exportBtn2")
+    ?.addEventListener(
+      "click",
+      exportCSV
+    );
+}
+
+
+/* =========================================================
+   MODAL QR
+========================================================= */
+
+function setupQRModal() {
+
+  $(".close-qr")
+    ?.addEventListener(
+      "click",
+      () =>
+        $("#qrModal")?.close()
+    );
+
+
+  $("#downloadCard")
+    ?.addEventListener(
+      "click",
+      downloadCard
+    );
+
+
+  $("#sendWhatsApp")
+    ?.addEventListener(
+      "click",
+      sendWhatsApp
+    );
+}
+
+
+/* =========================================================
+   INIT
+========================================================= */
+
+async function init() {
+
+  console.log(
+    "================================"
+  );
+
+  console.log(
+    "MASKANA APP START"
+  );
+
+  console.log(
+    "================================"
+  );
+
+
+  /*
+     PENTING:
+     Supabase harus siap terlebih dahulu.
+  */
+
+  await ensureSupabase();
+
+
+  /*
+     Pasang semua tombol.
+  */
+
+  setupNavigation();
+
+  setupParticipantForm();
+
+  setupScanner();
+
+  setupSearch();
+
+  setupExport();
+
+  setupQRModal();
+
+  setupVillageAutoFill();
+
+  setupDeleteButtons();
+
+  setupQRButtons();
+
+  updateDate();
+
+
+  setInterval(
+    updateDate,
+    60000
+  );
+
+
+  /*
+     Tampilkan data lokal sementara.
+  */
+
+  const local =
+    localBackup();
+
 
   if (
-    document.readyState ===
-    "loading"
+    local.participants.length ||
+    local.attendance.length
   ) {
-    document.addEventListener(
-      "DOMContentLoaded",
-      init
-    );
-  } else {
-    init();
+
+    data =
+      local;
+
+
+    data.participants
+      .forEach(
+        rememberAddress
+      );
   }
 
-  /* =====================================================
-     API GLOBAL
-  ===================================================== */
 
-  window.Maskana = {
-    refresh: loadOnline,
+  render();
 
-    scan: processScan,
 
-    getParticipants:
-      () => participants,
+  /*
+     Setelah itu ambil data
+     yang sebenarnya dari Supabase.
+  */
 
-    getAttendance:
-      () => attendance
-  };
+  if (supabase) {
 
-})();
+    await loadRemoteData();
+
+    subscribeRealtime();
+
+  } else {
+
+    toast(
+      "Supabase belum terhubung."
+    );
+  }
+
+
+  /*
+     Mulai dari dashboard.
+  */
+
+  const dashboard =
+    document.querySelector(
+      '.nav-item[data-tab="dashboard"]'
+    );
+
+
+  dashboard?.click();
+
+
+  console.log(
+    "================================"
+  );
+
+  console.log(
+    "MASKANA APP READY"
+  );
+
+  console.log(
+    "Supabase:",
+    !!supabase
+  );
+
+  console.log(
+    "================================"
+  );
+}
+
+
+/* =========================================================
+   JALANKAN SETELAH HTML SIAP
+========================================================= */
+
+if (
+  document.readyState ===
+  "loading"
+) {
+
+  document.addEventListener(
+    "DOMContentLoaded",
+    init
+  );
+
+} else {
+
+  init();
+}
+
+
+/* =========================================================
+   API GLOBAL
+========================================================= */
+
+window.Maskana = {
+
+  refresh:
+    loadRemoteData,
+
+  scan:
+    recordScan,
+
+  getParticipants:
+    () =>
+      data.participants,
+
+  getAttendance:
+    () =>
+      data.attendance
+
+};
