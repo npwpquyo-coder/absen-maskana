@@ -3,33 +3,51 @@
 
   /* =====================================================
      KONFIGURASI
-  ===================================================== */
+  ================================================ */
 
-  const SUPABASE_URL =
-    window.SUPABASE_URL || "";
+  /* =====================================================
+   SUPABASE ONLINE - ABSEN MASKANA
+===================================================== */
 
-  const SUPABASE_KEY =
-    window.SUPABASE_ANON_KEY || "";
+const SUPABASE_URL =
+  window.MASKANA_SUPABASE_URL || "";
 
-  let supabase = null;
+const SUPABASE_KEY =
+  window.MASKANA_SUPABASE_KEY || "";
 
-  if (
-    window.supabase &&
-    SUPABASE_URL &&
-    SUPABASE_KEY
-  ) {
-    try {
-      supabase = window.supabase.createClient(
-        SUPABASE_URL,
-        SUPABASE_KEY
-      );
-    } catch (error) {
-      console.error(
-        "Supabase gagal dibuat:",
-        error
-      );
-    }
+let supabase = null;
+
+function initSupabase() {
+  if (!window.supabase) {
+    console.error("Library Supabase belum tersedia.");
+    return false;
   }
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error("Konfigurasi Supabase belum tersedia.");
+    return false;
+  }
+
+  try {
+    supabase = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_KEY
+    );
+
+    console.log("✅ Supabase berhasil terhubung.");
+
+    return true;
+  } catch (error) {
+    console.error(
+      "❌ Supabase gagal dibuat:",
+      error
+    );
+
+    supabase = null;
+
+    return false;
+  }
+
 
   /* =====================================================
      DATA
