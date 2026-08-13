@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link rel="stylesheet" href="style.css" />
@@ -71,7 +72,8 @@
   <dialog id="participantModal"><form method="dialog" id="participantForm"><div class="modal-head"><div><p class="eyebrow">PESERTA BARU</p><h2>Tambah data peserta</h2></div><button class="close" value="cancel">×</button></div><div class="form-grid"><label>Nama lengkap<input required name="name" placeholder="Contoh: Siti Aminah" /></label><label>Nomor WhatsApp<input required name="phone" inputmode="tel" placeholder="08xxxxxxxxxx" /></label><label>Desa<input required name="village" id="villageInput" list="villageOptions" placeholder="Ketik nama desa" /><small class="field-help">Desa yang pernah disimpan akan mengisi alamat otomatis.</small></label><label>Kecamatan<input required name="district" id="districtInput" placeholder="Terisi otomatis bila desa sudah dikenal" /></label><label class="wide">Kabupaten<input required name="regency" id="regencyInput" placeholder="Terisi otomatis bila desa sudah dikenal" /></label></div><datalist id="villageOptions"></datalist><div class="modal-actions"><button value="cancel" class="secondary-button">Batal</button><button class="primary-button" value="default">Simpan & buat QR</button></div></form></dialog>
   <dialog id="qrModal"><div class="qr-modal"><div class="card-actions"><p class="eyebrow">PRATINJAU KARTU PESERTA</p><button class="close close-qr" aria-label="Tutup">×</button></div><div class="participant-card" id="participantCard"><div class="card-glow glow-one"></div><div class="card-glow glow-two"></div><div class="card-branding"><img class="card-logo" src="logo-maskana.png" alt="Logo Maskana" /><div><b>MASKANA</b><small>KARTU KEHADIRAN</small></div></div><div class="card-title"><span>ALUMNI &amp; PESERTA</span><strong>Pengajian Alumni</strong></div><div class="card-qr-panel"><div id="qrCode" aria-label="Kode QR peserta"></div><small>SCAN SAAT HADIR</small></div><div class="card-info"><div><label>NAMA PESERTA</label><strong id="cardName"></strong></div><div><label>ALAMAT</label><span id="cardAddress"></span></div><div><label>WHATSAPP</label><span id="cardPhone"></span></div></div><div class="card-footer"><span>HADIRALUMNI · MASKANA</span><span>QR UNIK</span></div></div><p class="qr-instruction">Kartu sudah siap. Unduh untuk disimpan atau kirim kartu sebagai lampiran ke WhatsApp.</p><div class="card-buttons"><button class="secondary-button" id="downloadCard">⇩ Unduh PNG</button><button class="whatsapp-button" id="sendWhatsApp">◉ Kirim kartu ke WhatsApp</button><button class="primary-button print-card" onclick="window.print()">Cetak</button></div></div></dialog>
   <div id="toast"></div>
-  <script src="app.js"></script>
-  <script src="send-message.js"></script>
+ <script src="supabase-config.js"></script>
+<script src="app.js"></script>
+<script src="send-message.js"></script>
 </body>
 </html>
