@@ -70,14 +70,46 @@
   </main>
 
   <dialog id="participantModal"><form method="dialog" id="participantForm"><div class="modal-head"><div><p class="eyebrow">PESERTA BARU</p><h2>Tambah data peserta</h2></div><button class="close" value="cancel">×</button></div><div class="form-grid"><label>Nama lengkap<input required name="name" placeholder="Contoh: Siti Aminah" /></label><label>Nomor WhatsApp<input required name="phone" inputmode="tel" placeholder="08xxxxxxxxxx" /></label><label>Desa<input required name="village" id="villageInput" list="villageOptions" placeholder="Ketik nama desa" /><small class="field-help">Desa yang pernah disimpan akan mengisi alamat otomatis.</small></label><label>Kecamatan<input required name="district" id="districtInput" placeholder="Terisi otomatis bila desa sudah dikenal" /></label><label class="wide">Kabupaten<input required name="regency" id="regencyInput" placeholder="Terisi otomatis bila desa sudah dikenal" /></label></div><datalist id="villageOptions"></datalist><div class="modal-actions"><button value="cancel" class="secondary-button">Batal</button><button class="primary-button" value="default">Simpan & buat QR</button></div></form></dialog>
-  <dialog id="qrModal"><div class="qr-modal"><div class="card-actions"><p class="eyebrow">PRATINJAU KARTU PESERTA</p><button class="close close-qr" aria-label="Tutup">×</button></div><div class="participant-card" id="participantCard"><div class="card-glow glow-one"></div><div class="card-glow glow-two"></div><div class="card-branding">
-  <img
-    class="card-logo"
-    src="logo-maskana.png"
-    alt="Logo Maskana"
-  />
+  <dialog id="qrModal"><div class="qr-modal"><div class="card-actions"><p class="eyebrow">PRATINJAU KARTU PESERTA</p><button class="close close-qr" aria-label="Tutup">×</button></div><div class="participant-card" id="participantCard">
 
-  <div>
+  <!-- BACKGROUND DESAIN CORELDRAW -->
+  <img
+    class="card-background"
+    src="card-background.png"
+    alt=""
+  >
+
+  <!-- QR CODE -->
+  <div class="card-qr-area">
+    <div id="qrCode" aria-label="Kode QR peserta"></div>
+  </div>
+
+  <!-- NAMA -->
+  <div class="card-data card-name">
+    <strong id="cardName"></strong>
+  </div>
+
+  <!-- ALAMAT -->
+  <div class="card-data card-address">
+    <span id="cardAddress"></span>
+  </div>
+
+  <!-- WHATSAPP -->
+  <div class="card-data card-phone">
+    <span id="cardPhone"></span>
+  </div>
+
+  <!-- ID PESERTA -->
+  <div class="card-data card-id">
+    <strong id="cardParticipantId"></strong>
+  </div>
+
+  <!-- TANGGAL -->
+  <div class="card-data card-date">
+    <strong id="cardDate"></strong>
+  </div>
+
+</div>
     <b>MASKANA</b>
     <small>MAJLIS ALUMNI SANTRI KARANGPANAS</small>
   </div>
