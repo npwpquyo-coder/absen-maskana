@@ -1,630 +1,399 @@
 /* =========================================================
-   MASKANA — KARTU PESERTA PREMIUM
-   Majlis Alumni Santri Karangpanas
-   ========================================================= */
-
-.card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.card-actions .eyebrow {
-  margin: 0;
-}
-
-/* =========================================================
-   KARTU UTAMA
+   KARTU PESERTA MASKANA - DESAIN BARU
+   Background: card-background.png
+   Ukuran desain: 2048 x 1365
+   Rasio: 1.500 : 1
    ========================================================= */
 
 .participant-card {
-  width: min(760px, 100%);
-  aspect-ratio: 1.586;
   position: relative;
+
+  width: 100%;
+  aspect-ratio: 2048 / 1365;
+
   overflow: hidden;
+
+  background: #fff;
 
   border-radius: 24px;
 
-  background:
-    radial-gradient(
-      circle at 92% 8%,
-      rgba(211, 170, 73, 0.10),
-      transparent 28%
-    ),
-    linear-gradient(
-      135deg,
-      #ffffff 0%,
-      #fafcfb 100%
-    );
-
-  color: #123c35;
-
-  border: 1px solid rgba(7, 62, 56, 0.12);
-
   box-shadow:
-    0 25px 60px rgba(3, 55, 47, 0.20);
+    0 20px 50px rgba(0, 50, 40, 0.25);
 
-  font-family: Manrope, Arial, sans-serif;
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
 }
+
 
 /* =========================================================
-   PANEL HIJAU KIRI
+   BACKGROUND CORELDRAW
    ========================================================= */
 
-.participant-card::before {
-  content: "";
+.card-background {
 
   position: absolute;
 
-  left: 0;
-  top: 0;
-  bottom: 0;
+  inset: 0;
 
-  width: 35%;
+  width: 100%;
+  height: 100%;
 
-  background:
-    radial-gradient(
-      circle at 20% 20%,
-      rgba(255,255,255,.08),
-      transparent 28%
-    ),
-    linear-gradient(
-      150deg,
-      #04352f 0%,
-      #075b4d 58%,
-      #06473e 100%
-    );
+  object-fit: fill;
 
-  clip-path: polygon(
-    0 0,
-    100% 0,
-    79% 100%,
-    0 100%
-  );
-
-  z-index: 0;
-}
-
-/* Ornamen emas */
-
-.participant-card::after {
-  content: "";
-
-  position: absolute;
-
-  left: 31%;
-  top: -10%;
-  bottom: -10%;
-
-  width: 6%;
-
-  border-left: 6px solid #d9ad43;
-  border-right: 2px solid rgba(255,255,255,.75);
-
-  border-radius: 50%;
-
-  transform: rotate(1deg);
+  display: block;
 
   z-index: 1;
 
   pointer-events: none;
 }
 
-/* =========================================================
-   LOGO MASKANA
-   ========================================================= */
-
-.card-branding {
-  position: absolute;
-
-  top: 6.5%;
-  left: 5.8%;
-
-  width: 25%;
-
-  display: flex;
-  flex-direction: column;
-
-  align-items: center;
-
-  text-align: center;
-
-  z-index: 5;
-
-  color: #ffffff;
-}
-
-/* Logo gambar */
-
-.card-logo {
-  width: clamp(48px, 8vw, 76px);
-  height: clamp(48px, 8vw, 76px);
-
-  object-fit: contain;
-
-  margin-bottom: 3px;
-
-  filter:
-    drop-shadow(0 5px 10px rgba(0,0,0,.22));
-
-  background: transparent !important;
-
-  border: 0 !important;
-}
-
-/* Nama MASKANA */
-
-.card-branding b {
-  display: block;
-
-  margin-top: 1px;
-
-  font-size: clamp(15px, 2.8vw, 28px);
-
-  line-height: 1;
-
-  letter-spacing: .5px;
-
-  font-weight: 700;
-
-  color: #4f9b86;
-}
-
-/*
-   Mengubah tulisan kecil lama
-   "KARTU KEHADIRAN"
-   menjadi kepanjangan MASKANA.
-*/
-
-.card-branding small {
-  display: block;
-
-  width: 145%;
-
-  margin-top: 8px;
-
-  font-size: clamp(5px, .75vw, 8px);
-
-  line-height: 1.25;
-
-  letter-spacing: 1.2px;
-
-  font-weight: 800;
-
-  color: #e8b946;
-
-  text-transform: uppercase;
-}
 
 /* =========================================================
-   JUDUL KARTU
+   SEMUA DATA DI ATAS BACKGROUND
    ========================================================= */
 
-.card-title {
+.card-data,
+.card-qr-area {
+
   position: absolute;
 
-  left: 39%;
-
-  top: 8%;
-
-  width: 55%;
-
-  text-align: left;
-
-  z-index: 4;
+  z-index: 10;
 }
 
-/* label ALUMNI & PESERTA */
-
-.card-title span {
-  display: block;
-
-  font-size: clamp(6px, .9vw, 9px);
-
-  letter-spacing: 1.8px;
-
-  color: #0a4a40;
-
-  font-weight: 800;
-
-  text-transform: uppercase;
-}
-
-/* Pengajian Alumni */
-
-.card-title strong {
-  display: block;
-
-  margin-top: 5px;
-
-  font-size: clamp(15px, 2.8vw, 27px);
-
-  line-height: 1.05;
-
-  color: #073f37;
-
-  font-weight: 800;
-
-  letter-spacing: -.5px;
-}
-
-/* Garis emas di bawah judul */
-
-.card-title::after {
-  content: "";
-
-  display: block;
-
-  width: 72%;
-
-  height: 2px;
-
-  margin-top: 12px;
-
-  background:
-    linear-gradient(
-      90deg,
-      #d8aa3c,
-      #d8aa3c,
-      transparent
-    );
-}
 
 /* =========================================================
    QR CODE
    ========================================================= */
 
-.card-qr-panel {
-  position: absolute;
+/*
+   Posisi ini mengikuti kotak putih pada desain Corel.
 
-  left: 5.2%;
-  top: 30%;
+   Nilai menggunakan persentase supaya
+   mengikuti ukuran kartu.
+*/
 
-  width: 25.5%;
+.card-qr-area {
 
-  aspect-ratio: 1;
+  left: 5.45%;
 
-  background: #ffffff;
+  top: 22.9%;
 
-  border-radius: 17px;
+  width: 23.5%;
 
-  display: grid;
-
-  place-items: center;
-
-  padding: 3.5%;
-
-  z-index: 5;
-
-  border: 4px solid #d8aa3c;
-
-  box-shadow:
-    0 15px 30px rgba(0, 30, 25, .28);
-}
-
-/* QR */
-
-.card-qr-panel #qrCode {
-  display: grid;
-
-  place-items: center;
-
-  width: 100%;
-  height: 100%;
-
-  margin: 0;
-  padding: 0;
-
-  background: #fff;
-
-  border: 0;
-
-  border-radius: 0;
-
-  line-height: 0;
-}
-
-.card-qr-panel #qrCode img,
-.card-qr-panel #qrCode canvas {
-  display: block !important;
-
-  width: 100% !important;
-  height: 100% !important;
-
-  max-width: 100% !important;
-  max-height: 100% !important;
-
-  aspect-ratio: 1 !important;
-
-  object-fit: contain !important;
-}
-
-/* Tulisan scan */
-
-.card-qr-panel small {
-  position: absolute;
-
-  top: calc(100% + 13px);
-
-  left: 50%;
-
-  transform: translateX(-50%);
-
-  width: max-content;
-
-  padding: 5px 13px;
-
-  border: 1.5px solid #d8aa3c;
-
-  border-radius: 999px;
-
-  font-size: clamp(5px, .72vw, 8px);
-
-  font-weight: 800;
-
-  letter-spacing: 1px;
-
-  color: #f0c45d;
-
-  white-space: nowrap;
-
-  background: rgba(4, 53, 47, .72);
-}
-
-/* =========================================================
-   DATA PESERTA
-   ========================================================= */
-
-.card-info {
-  position: absolute;
-
-  left: 39%;
-
-  top: 32%;
-
-  width: 55%;
-
-  height: 47%;
-
-  display: grid;
-
-  grid-template-rows:
-    1.2fr
-    1fr
-    .9fr;
-
-  gap: 0;
-
-  z-index: 4;
-}
-
-/* setiap baris */
-
-.card-info > div {
-  display: flex;
-
-  flex-direction: column;
-
-  justify-content: center;
-
-  min-width: 0;
-
-  border-bottom:
-    1px solid #dce8e3;
-}
-
-.card-info > div:last-child {
-  border-bottom: 0;
-}
-
-/* label */
-
-.card-info label {
-  margin-bottom: 5px;
-
-  font-size: clamp(6px, .8vw, 8px);
-
-  letter-spacing: 1.4px;
-
-  font-weight: 800;
-
-  color: #708a83;
-
-  text-transform: uppercase;
-}
-
-/* isi */
-
-.card-info strong,
-.card-info span {
-  font-size: clamp(9px, 1.6vw, 16px);
-
-  line-height: 1.2;
-
-  overflow: hidden;
-
-  text-overflow: ellipsis;
-
-  white-space: nowrap;
-
-  color: #173f39;
-}
-
-/* nama */
-
-.card-info strong {
-  font-size: clamp(14px, 2.6vw, 25px);
-
-  font-weight: 800;
-
-  color: #073f37;
-
-  letter-spacing: .2px;
-}
-
-/* alamat */
-
-.card-info #cardAddress {
-  font-size: clamp(7px, 1.15vw, 11px);
-
-  font-weight: 600;
-
-  white-space: normal;
-
-  display: -webkit-box;
-
-  -webkit-line-clamp: 2;
-
-  -webkit-box-orient: vertical;
-
-  overflow: hidden;
-}
-
-/* WhatsApp */
-
-.card-info #cardPhone {
-  font-family: "DM Mono", monospace;
-
-  font-size: clamp(8px, 1.25vw, 12px);
-
-  font-weight: 600;
-
-  letter-spacing: .3px;
-
-  color: #173f39;
-}
-
-/* =========================================================
-   FOOTER
-   ========================================================= */
-
-.card-footer {
-  position: absolute;
-
-  left: 39%;
-
-  right: 6%;
-
-  bottom: 6%;
+  height: 27.2%;
 
   display: flex;
 
   align-items: center;
 
-  justify-content: space-between;
+  justify-content: center;
 
-  font-size: clamp(5px, .72vw, 8px);
+  overflow: hidden;
+
+  background: #fff;
+
+  border-radius: 15px;
+
+  padding: 1.1%;
+
+  box-sizing: border-box;
+}
+
+
+/* QR */
+
+#qrCode {
+
+  width: 100%;
+
+  height: 100%;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  background: #fff;
+}
+
+
+#qrCode canvas,
+#qrCode img {
+
+  width: 100% !important;
+
+  height: 100% !important;
+
+  max-width: 100% !important;
+
+  max-height: 100% !important;
+
+  display: block !important;
+
+  object-fit: contain;
+}
+
+
+/* =========================================================
+   NAMA PESERTA
+   ========================================================= */
+
+.card-name {
+
+  left: 39.2%;
+
+  top: 34.4%;
+
+  width: 52.5%;
+
+  height: 8%;
+
+  display: flex;
+
+  align-items: center;
+
+  overflow: hidden;
+}
+
+
+.card-name strong {
+
+  display: block;
+
+  width: 100%;
+
+  font-size:
+    clamp(
+      18px,
+      3vw,
+      48px
+    );
+
+  line-height: 1;
 
   font-weight: 800;
 
-  letter-spacing: 1.2px;
+  color: #075043;
 
-  color: #165348;
+  text-transform: uppercase;
 
-  z-index: 5;
+  white-space: nowrap;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
 }
 
-.card-footer span:last-child {
-  color: #b38325;
-}
 
 /* =========================================================
-   ORNAMEN TAMBAHAN
+   ALAMAT
    ========================================================= */
 
-.card-glow {
-  display: none;
-}
+.card-address {
 
-/* =========================================================
-   MODAL
-   ========================================================= */
+  left: 39.2%;
 
-.qr-modal {
-  max-width: 850px;
-}
+  top: 38.9%;
 
-.qr-instruction {
-  max-width: 500px;
+  width: 52.5%;
 
-  margin: 16px auto;
+  height: 7%;
 
-  text-align: center;
-}
-
-/* =========================================================
-   TOMBOL
-   ========================================================= */
-
-.card-buttons {
   display: flex;
 
-  gap: 10px;
+  align-items: center;
 
-  flex-wrap: wrap;
-
-  justify-content: center;
+  overflow: hidden;
 }
 
-.print-card {
+
+.card-address span {
+
+  display: block;
+
   width: 100%;
+
+  font-size:
+    clamp(
+      9px,
+      1.35vw,
+      22px
+    );
+
+  line-height: 1.2;
+
+  font-weight: 600;
+
+  color: #111;
+
+  white-space: nowrap;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
 }
+
 
 /* =========================================================
-   PRINT
+   WHATSAPP
    ========================================================= */
 
-@media print {
+.card-phone {
 
-  body > * {
-    display: none !important;
-  }
+  left: 43.5%;
 
-  #qrModal {
-    display: block !important;
+  top: 47.8%;
 
-    position: static !important;
+  width: 45%;
 
-    width: 100% !important;
+  height: 7%;
 
-    max-width: none !important;
+  display: flex;
 
-    box-shadow: none !important;
-
-    border: 0 !important;
-
-    background: transparent !important;
-  }
-
-  .qr-modal {
-    padding: 0 !important;
-
-    max-width: none !important;
-  }
-
-  .qr-modal > .card-actions,
-  .qr-modal > .qr-instruction,
-  .qr-modal > .card-buttons {
-    display: none !important;
-  }
-
-  .participant-card {
-    width: 100% !important;
-
-    max-width: none !important;
-
-    break-inside: avoid;
-
-    box-shadow: none !important;
-  }
-
-  @page {
-    size: landscape;
-
-    margin: 0;
-  }
+  align-items: center;
 }
+
+
+.card-phone span {
+
+  font-size:
+    clamp(
+      10px,
+      1.45vw,
+      23px
+    );
+
+  line-height: 1;
+
+  font-weight: 700;
+
+  color: #111;
+
+  white-space: nowrap;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+}
+
+
+/* =========================================================
+   ID PESERTA
+   ========================================================= */
+
+.card-id {
+
+  left: 39.3%;
+
+  top: 58.5%;
+
+  width: 27%;
+
+  height: 7%;
+
+  display: flex;
+
+  align-items: center;
+
+  overflow: hidden;
+}
+
+
+.card-id strong {
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  font-size:
+    clamp(
+      13px,
+      2vw,
+      32px
+    );
+
+  line-height: 1;
+
+  font-weight: 700;
+
+  color: #fff;
+
+  white-space: nowrap;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+}
+
+
+/* =========================================================
+   TANGGAL
+   ========================================================= */
+
+.card-date {
+
+  left: 70.5%;
+
+  top: 58.5%;
+
+  width: 20%;
+
+  height: 7%;
+
+  display: flex;
+
+  align-items: center;
+
+  overflow: hidden;
+}
+
+
+.card-date strong {
+
+  font-size:
+    clamp(
+      10px,
+      1.45vw,
+      23px
+    );
+
+  line-height: 1;
+
+  font-weight: 700;
+
+  color: #fff;
+
+  white-space: nowrap;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+}
+
+
+/* =========================================================
+   ELEMEN LAMA
+   ========================================================= */
+
+/*
+   Kita sembunyikan elemen desain lama
+   supaya tidak menumpuk dengan background Corel.
+*/
+
+.card-branding,
+.card-title,
+.card-info,
+.card-bottom-info,
+.card-footer,
+.official-badge {
+
+  display: none !important;
+}
+
 
 /* =========================================================
    MOBILE
@@ -632,82 +401,82 @@
 
 @media (max-width: 600px) {
 
-  .qr-modal {
-    padding: 12px;
-  }
-
   .participant-card {
-    border-radius: 14px;
+
+    border-radius: 12px;
+
+    box-shadow:
+      0 10px 25px
+      rgba(0, 50, 40, .20);
   }
 
-  .card-branding {
-    left: 5%;
 
-    width: 27%;
+  .card-qr-area {
+
+    border-radius: 9px;
   }
 
-  .card-logo {
-    width: 48px;
-    height: 48px;
-  }
 
-  .card-branding b {
-    font-size: 14px;
-  }
+  .card-name strong {
 
-  .card-branding small {
-    font-size: 5px;
-
-    letter-spacing: .8px;
-  }
-
-  .card-title {
-    left: 39%;
-    top: 8%;
-    width: 55%;
-  }
-
-  .card-title strong {
-    font-size: 14px;
-  }
-
-  .card-qr-panel {
-    left: 5%;
-    top: 31%;
-
-    width: 26%;
-
-    border-radius: 10px;
-
-    border-width: 2px;
-  }
-
-  .card-info {
-    left: 39%;
-    width: 55%;
-
-    top: 32%;
-    height: 47%;
-  }
-
-  .card-info strong {
     font-size: 13px;
   }
 
-  .card-info #cardAddress {
+
+  .card-address span {
+
+    font-size: 5px;
+  }
+
+
+  .card-phone {
+
+    left: 43.5%;
+  }
+
+
+  .card-phone span {
+
     font-size: 6px;
   }
 
-  .card-info #cardPhone {
+
+  .card-id strong {
+
     font-size: 7px;
   }
 
-  .card-footer {
-    left: 39%;
-    right: 5%;
 
-    bottom: 5%;
+  .card-date strong {
 
-    font-size: 5px;
+    font-size: 6px;
+  }
+}
+
+
+/* =========================================================
+   PRINT
+   ========================================================= */
+
+@media print {
+
+  .participant-card {
+
+    width: 100% !important;
+
+    max-width: none !important;
+
+    box-shadow: none !important;
+
+    border-radius: 0 !important;
+
+    break-inside: avoid;
+  }
+
+  @page {
+
+    size: landscape;
+
+    margin: 0;
   }
 }
